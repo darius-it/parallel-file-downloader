@@ -9,6 +9,7 @@ import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.ceil
@@ -55,8 +56,8 @@ suspend fun downloadInParallel(fileName: String, totalSize: Double, chunkSize: D
         currentStart = currentEnd
     }
 
-    // start download of chunks in parallel (coroutines)
-    val chunks = kotlinx.coroutines.coroutineScope {
+    // start download of chunks in parallel (coroutines), wait for all to finish
+    val chunks = coroutineScope {
         chunkRanges.map { range ->
             async(Dispatchers.Default) {
                 val chunkData = downloadChunk(fileName, range.first, range.second)
