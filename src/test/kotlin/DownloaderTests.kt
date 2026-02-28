@@ -7,6 +7,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import me.dariusit.downloader.Downloader
 import me.dariusit.downloader.FileChunk
@@ -81,7 +82,7 @@ class DownloaderTests {
     fun testFileChunkDownload() {
         val fileChunk: FileChunk?
 
-        runBlocking { // grab a chunk of the test file and check if it has the correct size
+        runBlocking {
             fileChunk = FileChunk.fetchChunk(httpClient, "https://mockserver/testfile", 0, 512)
         }
 
@@ -110,16 +111,13 @@ class DownloaderTests {
             val directDownload = httpClient.get("$serverUrl/$fileName")
             val completeFileData = directDownload.readRawBytes()
 
-            // check if downloaded data has the correct size
             assertEquals(contentLength, parallelDownloadedData.size) {
                 "Downloaded data size does not match expected content length! Expected $contentLength bytes, but got ${parallelDownloadedData.size} bytes" }
 
-            // check if downloaded data matches the original file data
             assertTrue(parallelDownloadedData.contentEquals(completeFileData)) {
                 "Downloaded data does not match original file data!"
             }
 
-            // Also check agains the source of truth
             assertTrue(parallelDownloadedData.contentEquals(testFileData)) {
                 "Downloaded data does not match the test file data source!"
             }
@@ -185,6 +183,35 @@ class DownloaderTests {
         assertThrows (Exception::class.java) {
             runBlocking {
                 FileChunk.fetchChunk(httpClient, "https://mockserver/testfile", 0, testFileSize + 1)
+            }
+        }
+    }
+
+    @Test
+    fun testDownloadFailsWhenOneChunkFails() {
+        val failureMockEngine = WebServerMock.getFailureMockEngine()
+
+        val errorClient = HttpClient(failureMockEngine)
+        Downloader.client = errorClient
+
+        assertThrows(Exception::class.java) {
+            runBlocking {
+                Downloader.downloadFile("testfile", "https://faulty-server", 4, false)
+            }
+        }
+    }
+
+    @Test
+    fun testChunkAssemblyWithDelays() {
+        val slowMockEngine = WebServerMock.getDelayedChunkMockEngine(testFileSize, testFileData)
+
+        val slowClient = HttpClient(slowMockEngine)
+        Downloader.client = slowClient
+
+        runBlocking {
+            val downloadedData = Downloader.downloadFile("testfile", "https://slow-server", 4, false)
+            assertTrue(downloadedData.contentEquals(testFileData)) {
+                "Parallel chunks were not assembled in the correct order."
             }
         }
     }

@@ -5,6 +5,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import kotlinx.coroutines.delay
 import kotlin.random.Random
 import kotlin.text.removePrefix
 
@@ -61,6 +62,57 @@ object WebServerMock {
                 }
             } else {
                 respond("Method Not Allowed", status = HttpStatusCode.MethodNotAllowed)
+            }
+        }
+    }
+
+    fun getFailureMockEngine(): MockEngine {
+        return MockEngine { request ->
+            val rangeHeader = request.headers[HttpHeaders.Range]
+            // Simulate a failure only for a specific byte range (e.g., the second chunk)
+            if (rangeHeader != null && rangeHeader.contains("bytes=512-")) {
+                respond("Server Error", status = HttpStatusCode.InternalServerError)
+            } else {
+                // Return normal data for others
+                respond(ByteArray(100), status = HttpStatusCode.PartialContent)
+            }
+        }
+    }
+
+    fun getDelayedChunkMockEngine(testFileSize: Int, testFileData: ByteArray): MockEngine {
+        return MockEngine { request ->
+            if (request.method == HttpMethod.Head) {
+                return@MockEngine respond(
+                    content = ByteArray(0),
+                    headers = headersOf(
+                        HttpHeaders.ContentLength to listOf(testFileSize.toString()),
+                        HttpHeaders.AcceptRanges to listOf("bytes")
+                    )
+                )
+            }
+
+            val rangeHeader = request.headers[HttpHeaders.Range]
+
+            if (rangeHeader != null && rangeHeader.contains("bytes=0-")) {
+                delay(500)
+            }
+
+            if (rangeHeader != null) {
+                val range = rangeHeader.removePrefix("bytes=").split("-")
+                val start = range[0].toInt()
+                val end = range[1].toInt()
+                val chunk = testFileData.sliceArray(start..end)
+
+                respond(
+                    content = chunk,
+                    status = HttpStatusCode.PartialContent,
+                    headers = headersOf(
+                        HttpHeaders.ContentLength to listOf(chunk.size.toString()),
+                        HttpHeaders.ContentRange to listOf("bytes $start-${end}/$testFileSize")
+                    )
+                )
+            } else {
+                respond(testFileData, HttpStatusCode.OK)
             }
         }
     }
