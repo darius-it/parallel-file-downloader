@@ -16,7 +16,7 @@ object Downloader {
 
     private var client: HttpClient = HttpClient(CIO)
 
-    suspend fun downloadFile(fileName: String) {
+    suspend fun downloadFile(fileName: String, saveToDisk: Boolean = true) {
         val fileUrl = "$SERVER_URL/$fileName"
         val fileProperties = fetchFileProperties(client, fileUrl)
         val contentLength = fileProperties?.contentLength ?: 0
@@ -33,8 +33,9 @@ object Downloader {
 
         val rawData = downloadInParallel(fileUrl, contentLength, downloadChunkSize)
 
-        // download raw data to file
-        File("downloaded_$fileName").writeBytes(rawData)
+        // download raw data to file, maybe make a flag whether to return bytes or write to file
+        if (saveToDisk)
+            File("downloaded_$fileName").writeBytes(rawData)
     }
 
     fun calculateChunkRanges(totalSize: Int, chunkSize: Int): List<Pair<Int, Int>> {
