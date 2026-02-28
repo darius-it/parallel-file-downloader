@@ -3,7 +3,7 @@ package me.dariusit.downloader
 import io.ktor.client.HttpClient
 import io.ktor.client.request.head
 
-data class FileProperties (val contentLength: Int) {
+data class FileProperties (val contentLength: Int, val acceptRanges: String? = null) {
     companion object {
         suspend fun fetchFileProperties(httpClient: HttpClient, fileName: String): FileProperties? {
             val response = httpClient.head(fileName)
@@ -16,7 +16,8 @@ data class FileProperties (val contentLength: Int) {
             }
 
             return FileProperties(
-                contentLength = response.headers["content-length"]?.toInt() ?: 0
+                contentLength = response.headers["content-length"]?.toInt() ?: 0,
+                acceptRanges = response.headers["accept-ranges"]
             )
         }
     }
