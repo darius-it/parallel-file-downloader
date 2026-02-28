@@ -24,59 +24,7 @@ class DownloaderTests {
     private val testFileData = Random.nextBytes(testFileSize)
 
     // Mock Engine that simulates a file server supporting range requests
-    private val mockEngine = MockEngine { request ->
-        val path = request.url.encodedPath
-        if (path == "/") return@MockEngine respond("Not Found", status = HttpStatusCode.NotFound)
-
-        if (request.method == HttpMethod.Head) {
-            respond(
-                content = ByteArray(0),
-                status = HttpStatusCode.OK,
-                headers = headersOf(
-                    HttpHeaders.ContentLength to listOf(testFileSize.toString()),
-                    HttpHeaders.AcceptRanges to listOf("bytes"),
-                    HttpHeaders.ContentType to listOf("application/octet-stream")
-                )
-            )
-        } else if (request.method == HttpMethod.Get) {
-            val rangeHeader = request.headers[HttpHeaders.Range]
-            if (rangeHeader != null) {
-                // Parse Range: bytes=start-end
-                val range = rangeHeader.removePrefix("bytes=").split("-")
-                val start = range[0].toInt()
-                 // If end is missing or empty, it means "to end", but let's assume it's always present as per our client
-                val end = if (range.size > 1 && range[1].isNotEmpty()) range[1].toInt() else testFileSize - 1
-
-                if (start >= testFileSize || end >= testFileSize || start > end) {
-                    respond("Range Not Satisfiable", status = HttpStatusCode.RequestedRangeNotSatisfiable)
-                } else {
-                    val chunk = testFileData.sliceArray(start..end)
-                    respond(
-                        content = chunk,
-                        status = HttpStatusCode.PartialContent,
-                        headers = headersOf(
-                            HttpHeaders.ContentLength to listOf(chunk.size.toString()),
-                            HttpHeaders.ContentRange to listOf("bytes $start-$end/$testFileSize"),
-                            HttpHeaders.ContentType to listOf("application/octet-stream")
-                        )
-                    )
-                }
-            } else {
-                // Full file download
-                respond(
-                    content = testFileData,
-                    status = HttpStatusCode.OK,
-                    headers = headersOf(
-                        HttpHeaders.ContentLength to listOf(testFileSize.toString()),
-                        HttpHeaders.AcceptRanges to listOf("bytes"),
-                        HttpHeaders.ContentType to listOf("application/octet-stream")
-                    )
-                )
-            }
-        } else {
-            respond("Method Not Allowed", status = HttpStatusCode.MethodNotAllowed)
-        }
-    }
+    private val mockEngine = WebServerMock.getMockEngine(1024, testFileData)
 
     private lateinit var httpClient: HttpClient
 
