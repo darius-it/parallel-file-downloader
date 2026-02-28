@@ -11,7 +11,6 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import me.dariusit.downloader.FileProperties.Companion.fetchFileProperties
 import java.io.File
-import java.util.logging.Logger
 import kotlin.math.ceil
 
 object Downloader {
@@ -118,7 +117,12 @@ object Downloader {
         }
 
         // combine all chunks into one byte array
-        val combinedData = chunks.reduce { acc, chunk -> acc + chunk }
+        val combinedData = ByteArray(totalSize)
+        var offset = 0
+        for (chunk in chunks) {
+            chunk.copyInto(combinedData, destinationOffset = offset)
+            offset += chunk.size
+        }
         require(combinedData.size == totalSize) { "Combined data size does not match total size!" }
 
         return combinedData;
