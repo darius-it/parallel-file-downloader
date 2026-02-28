@@ -3,12 +3,14 @@
 A simple tool to download files from a web server in chunks (using the `Range` header) which are downloaded in parallel. Project made for the made for the JB Internship application Summer/Fall 2026
 
 ## How to use
+Prerequisite is a web server which supports downloading in chunks using the `Range` header, as outlined in the task description (so for example an Apache web server pointed to server some files to be downloaded).
+
 The downloader logic is exposed through the `downloadFile()` method, which can be used as follows:
 
 ```kotlin
 downloadFile(
-    "someFileName.png",
-    "http://localhost:3210", //defaults to http://localhost:8080
+    "someFileName.png", // file name to download
+    "http://localhost:3210", // server URL, defaults to http://localhost:8080
     4, // # of chunks to download in parallel, defaults to 2
     true // whether to save file to disk, defaults to true
 )
