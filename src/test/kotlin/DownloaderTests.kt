@@ -1,26 +1,94 @@
 import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respond
+import io.ktor.client.request.get
+import io.ktor.client.statement.readRawBytes
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.headersOf
 import kotlinx.coroutines.runBlocking
 import me.dariusit.downloader.Downloader
 import me.dariusit.downloader.FileChunk
 import me.dariusit.downloader.FileProperties
 import me.dariusit.downloader.FileProperties.Companion.fetchFileProperties
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import kotlin.random.Random
 
 class DownloaderTests {
-    /*
-        - check if combined file == original file
-        - test edge cases like downloading empty file
-        - check file checksum, check individual chunks for correctness (can we get checksum from server?)
-     */
+    private val testFileSize = 1024
+    private val testFileData = Random.nextBytes(testFileSize)
 
-    val httpClient = HttpClient(CIO)
+    // Mock Engine that simulates a file server supporting range requests
+    private val mockEngine = MockEngine { request ->
+        val path = request.url.encodedPath
+        if (path == "/") return@MockEngine respond("Not Found", status = HttpStatusCode.NotFound)
+
+        if (request.method == HttpMethod.Head) {
+            respond(
+                content = ByteArray(0),
+                status = HttpStatusCode.OK,
+                headers = headersOf(
+                    HttpHeaders.ContentLength to listOf(testFileSize.toString()),
+                    HttpHeaders.AcceptRanges to listOf("bytes"),
+                    HttpHeaders.ContentType to listOf("application/octet-stream")
+                )
+            )
+        } else if (request.method == HttpMethod.Get) {
+            val rangeHeader = request.headers[HttpHeaders.Range]
+            if (rangeHeader != null) {
+                // Parse Range: bytes=start-end
+                val range = rangeHeader.removePrefix("bytes=").split("-")
+                val start = range[0].toInt()
+                 // If end is missing or empty, it means "to end", but let's assume it's always present as per our client
+                val end = if (range.size > 1 && range[1].isNotEmpty()) range[1].toInt() else testFileSize - 1
+
+                if (start >= testFileSize || end >= testFileSize || start > end) {
+                    respond("Range Not Satisfiable", status = HttpStatusCode.RequestedRangeNotSatisfiable)
+                } else {
+                    val chunk = testFileData.sliceArray(start..end)
+                    respond(
+                        content = chunk,
+                        status = HttpStatusCode.PartialContent,
+                        headers = headersOf(
+                            HttpHeaders.ContentLength to listOf(chunk.size.toString()),
+                            HttpHeaders.ContentRange to listOf("bytes $start-$end/$testFileSize"),
+                            HttpHeaders.ContentType to listOf("application/octet-stream")
+                        )
+                    )
+                }
+            } else {
+                // Full file download
+                respond(
+                    content = testFileData,
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(
+                        HttpHeaders.ContentLength to listOf(testFileSize.toString()),
+                        HttpHeaders.AcceptRanges to listOf("bytes"),
+                        HttpHeaders.ContentType to listOf("application/octet-stream")
+                    )
+                )
+            }
+        } else {
+            respond("Method Not Allowed", status = HttpStatusCode.MethodNotAllowed)
+        }
+    }
+
+    private lateinit var httpClient: HttpClient
+
+    @BeforeEach
+    fun setup() {
+        httpClient = HttpClient(mockEngine)
+        Downloader.client = httpClient
+    }
 
     @Test
     fun testCalculateChunkRanges() {
-        val totalSizes = listOf(0, 1, 10, 100, 500, 999, 1000, 1001, 5000, 10000)
+        val totalSizes = listOf(1, 10, 100, 500, 999, 1000, 1001, 5000, 10000)
         val chunkSize = 500
 
         for (totalSize in totalSizes) {
@@ -45,7 +113,7 @@ class DownloaderTests {
         val fileProperties: FileProperties?
 
         runBlocking {
-            fileProperties = fetchFileProperties(httpClient, "https://httpbin.org/range/1024") // test endpoint, 1024 bytes of random data
+            fileProperties = fetchFileProperties(httpClient, "https://mockserver/testfile")
         }
 
         // check if fetching worked and we got all the wanted properties
@@ -57,8 +125,8 @@ class DownloaderTests {
         // check if content length is correct
         assertTrue(
             fileProperties?.contentLength!! > 0
-                    && fileProperties.contentLength == 1024
-        ) { "Content length is incorrect! Expected 1024, but got ${fileProperties.contentLength}" }
+                    && fileProperties.contentLength == testFileSize
+        ) { "Content length is incorrect! Expected $testFileSize, but got ${fileProperties.contentLength}" }
     }
 
     @Test
@@ -66,7 +134,7 @@ class DownloaderTests {
         val fileChunk: FileChunk?
 
         runBlocking { // grab a chunk of the test file and check if it has the correct size
-            fileChunk = FileChunk.fetchChunk(httpClient, "https://httpbin.org/range/1024", 0, 512)
+            fileChunk = FileChunk.fetchChunk(httpClient, "https://mockserver/testfile", 0, 512)
         }
 
         // check if fetching worked, and we got the wanted chunk (with the right size)
@@ -80,5 +148,96 @@ class DownloaderTests {
             "Fetched chunk has incorrect size! Expected 512 bytes, but got ${fileChunk?.rawBytes?.size} bytes" }
     }
 
-    // TODO: add a test where we download a chunk in full, expect an exception because status won't be 206
+    // tests for downloading file in 2,3,6 chunks, check if combined file == original (checksum and bytes)
+    fun testDownloadInParallelVariableChunks(chunks: Int) {
+        val serverUrl = "https://mockserver"
+        val fileName = "testfile"
+
+        runBlocking {
+            val fileProperties = fetchFileProperties(httpClient, "$serverUrl/$fileName")
+            val contentLength = fileProperties?.contentLength ?: 0
+
+            val parallelDownloadedData = Downloader.downloadFile(fileName, serverUrl, chunks, false)
+
+            val directDownload = httpClient.get("$serverUrl/$fileName")
+            val completeFileData = directDownload.readRawBytes()
+
+            // check if downloaded data has the correct size
+            assertEquals(contentLength, parallelDownloadedData.size) {
+                "Downloaded data size does not match expected content length! Expected $contentLength bytes, but got ${parallelDownloadedData.size} bytes" }
+
+            // check if downloaded data matches the original file data
+            assertTrue(parallelDownloadedData.contentEquals(completeFileData)) {
+                "Downloaded data does not match original file data!"
+            }
+
+            // Also check agains the source of truth
+            assertTrue(parallelDownloadedData.contentEquals(testFileData)) {
+                "Downloaded data does not match the test file data source!"
+            }
+        }
+    }
+
+    @Test
+    fun testDownloadInParallel2Chunks() {
+        testDownloadInParallelVariableChunks(2)
+    }
+
+    @Test
+    fun testDownloadInParallelDifferentChunkSizes() {
+        val chunkSizes = listOf(1, 5, 7, 10, 99, 101)
+        chunkSizes.forEach {
+            println("Testing download in parallel with $it chunks...")
+            testDownloadInParallelVariableChunks(it)
+        }
+    }
+
+    /*
+        Test that we throw some exceptions correctly
+     */
+    @Test
+    fun testDownloadFileInvalidChunkCount() {
+        assertThrows (IllegalArgumentException::class.java) {
+            testDownloadInParallelVariableChunks(-1)
+        }
+
+        assertThrows (IllegalArgumentException::class.java) {
+            testDownloadInParallelVariableChunks(0)
+        }
+    }
+
+    @Test
+    fun testChunkRangeInvalid() {
+        assertThrows (IllegalArgumentException::class.java) {
+            Downloader.calculateChunkRanges(0, 999)
+        }
+
+        assertThrows (IllegalArgumentException::class.java) {
+            Downloader.calculateChunkRanges(1000, 0)
+        }
+    }
+
+    @Test
+    fun testEmptyFileOrServerName() {
+        assertThrows (IllegalArgumentException::class.java) {
+            runBlocking {
+                Downloader.downloadFile("", "https://mockserver", 2, false)
+            }
+        }
+
+        assertThrows (IllegalArgumentException::class.java) {
+            runBlocking {
+                Downloader.downloadFile("testfile", "", 2, false)
+            }
+        }
+    }
+
+    @Test
+    fun testChunkDownloadFullFile() {
+        assertThrows (Exception::class.java) {
+            runBlocking {
+                FileChunk.fetchChunk(httpClient, "https://mockserver/testfile", 0, testFileSize + 1)
+            }
+        }
+    }
 }

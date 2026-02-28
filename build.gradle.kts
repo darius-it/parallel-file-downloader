@@ -18,6 +18,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     implementation("org.slf4j:slf4j-simple:2.0.3")
     implementation("io.github.oshai:kotlin-logging-jvm:7.0.3")
+    testImplementation("io.ktor:ktor-client-mock:${ktor_version}")
 }
 
 tasks.test {
