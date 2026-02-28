@@ -1,5 +1,6 @@
 package me.dariusit.downloader
 
+import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import kotlinx.coroutines.Dispatchers
@@ -8,6 +9,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import me.dariusit.downloader.FileProperties.Companion.fetchFileProperties
 import java.io.File
+import java.util.logging.Logger
 import kotlin.math.ceil
 
 object Downloader {
@@ -15,6 +17,8 @@ object Downloader {
     private var PARALLEL_DOWNLOAD_CHUNKS = 2;
 
     private var client: HttpClient = HttpClient(CIO)
+
+    private val logger = KotlinLogging.logger {}
 
     /**
      * Fetch file properties and download in parallel
@@ -36,15 +40,13 @@ object Downloader {
         val fileProperties = fetchFileProperties(client, fileUrl)
         val contentLength = fileProperties?.contentLength ?: 0
 
-        println("Content length of file: ${fileProperties?.contentLength}")
-
         if (contentLength <= 0) {
             println("File is empty or content length could not be determined, aborting download.")
             return null
         }
 
         val downloadChunkSize = (contentLength.toDouble() / parallelDownloadChunks).let { ceil(it).toInt() };
-        println("Downloading $parallelDownloadChunks chunks in parallel with size $downloadChunkSize...")
+        logger.debug { "Downloading $parallelDownloadChunks chunks in parallel with size $downloadChunkSize..." }
 
         val rawData = downloadInParallel(fileUrl, contentLength, downloadChunkSize)
 
@@ -90,7 +92,7 @@ object Downloader {
                         throw Exception("Chunk size mismatch! Expected $expectedChunkSize bytes, but got ${chunkData.rawBytes.size} bytes for range ${range.first}-${range.second}")
                     }
 
-                    println("Downloaded chunk ${range.first}-${range.second} with size ${chunkData.rawBytes.size}")
+                    logger.debug { "Downloaded chunk ${range.first}-${range.second} with size ${chunkData.rawBytes.size}" }
                     chunkData.rawBytes
                 }
             }.awaitAll()
