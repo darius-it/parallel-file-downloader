@@ -3,6 +3,8 @@ package me.dariusit.downloader
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
+import io.ktor.client.request.get
+import io.ktor.client.statement.readRawBytes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -16,7 +18,7 @@ object Downloader {
     private var SERVER_URL = "http://localhost:8080";
     private var PARALLEL_DOWNLOAD_CHUNKS = 2;
 
-    private var client: HttpClient = HttpClient(CIO)
+    var client: HttpClient = HttpClient(CIO)
 
     private val logger = KotlinLogging.logger {}
 
@@ -35,20 +37,34 @@ object Downloader {
         serverUrl: String = SERVER_URL,
         parallelDownloadChunks: Int = PARALLEL_DOWNLOAD_CHUNKS,
         saveToDisk: Boolean = true
-    ): ByteArray? {
+    ): ByteArray {
+        require (parallelDownloadChunks > 0) {
+            "Invalid number of parallel download chunks: $parallelDownloadChunks. Must be greater than 0."
+        }
+
+        require(fileName.isNotBlank()) { "File name cannot be blank!" }
+        require(serverUrl.isNotBlank()) { "Server URL cannot be blank!" }
+
         val fileUrl = "$serverUrl/$fileName"
         val fileProperties = fetchFileProperties(client, fileUrl)
         val contentLength = fileProperties?.contentLength ?: 0
 
-        if (contentLength <= 0) {
-            println("File is empty or content length could not be determined, aborting download.")
-            return null
+        require (contentLength > 0) {
+            "File is empty or content length could not be determined, aborting download."
         }
 
-        val downloadChunkSize = (contentLength.toDouble() / parallelDownloadChunks).let { ceil(it).toInt() };
-        logger.debug { "Downloading $parallelDownloadChunks chunks in parallel with size $downloadChunkSize..." }
+        var rawData: ByteArray?
 
-        val rawData = downloadInParallel(fileUrl, contentLength, downloadChunkSize)
+        if (parallelDownloadChunks == 1) {
+            logger.debug { "Downloading file in a single chunk since parallelDownloadChunks is set to 1..." }
+            val requestData = client.get(fileUrl)
+            rawData = requestData.readRawBytes()
+        } else {
+            val downloadChunkSize = (contentLength.toDouble() / parallelDownloadChunks).let { ceil(it).toInt() };
+            logger.debug { "Downloading $parallelDownloadChunks chunks in parallel with size $downloadChunkSize..." }
+
+            rawData = downloadInParallel(fileUrl, contentLength, downloadChunkSize)
+        }
 
         if (saveToDisk)
             File(fileName).writeBytes(rawData)
@@ -62,6 +78,9 @@ object Downloader {
      * @return Pairs of (start, end) byte indices, e.g. (0, 500), (500, 1000), etc.
      */
     fun calculateChunkRanges(totalSize: Int, chunkSize: Int): List<Pair<Int, Int>> {
+        require(totalSize > 0) { "Total file size must be greater than 0!" }
+        require(chunkSize > 0) { "Chunk size must be greater than 0!" }
+
         val chunkRanges = mutableListOf<Pair<Int, Int>>()
         var currentStart = 0
 
@@ -100,7 +119,7 @@ object Downloader {
 
         // combine all chunks into one byte array
         val combinedData = chunks.reduce { acc, chunk -> acc + chunk }
-        assert(combinedData.size == totalSize) { "Combined data size does not match total size!" }
+        require(combinedData.size == totalSize) { "Combined data size does not match total size!" }
 
         return combinedData;
     }
