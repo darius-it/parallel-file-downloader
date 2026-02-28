@@ -43,8 +43,6 @@ data class FileChunk (
                 }
             }
 
-            println(response)
-
             if (response.status != HttpStatusCode.PartialContent) {
                 println("Something went wrong when getting the chunk! Status code: ${response.status}")
                 throw Exception("Failed to fetch file chunk! Status code: ${response.status}")
