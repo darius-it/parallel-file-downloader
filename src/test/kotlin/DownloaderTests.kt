@@ -72,7 +72,7 @@ class DownloaderTests {
         // check if fetching worked, and we got the wanted chunk (with the right size)
         assertTrue(fileChunk != null) { "Failed to fetch file chunk!" }
 
-        val expectedChunkRange = (fileChunk?.start ?: 0) - (fileChunk?.end ?: 0)
+        val expectedChunkRange = (fileChunk?.end ?: 0) - (fileChunk?.start ?: 0)
         assertEquals (fileChunk?.rawBytes?.size, expectedChunkRange){ "Chunk boundaries do not correspond to fetched chunk size!" }
 
         // probably redundant with previous check but it doesn't hurt to check both ways
