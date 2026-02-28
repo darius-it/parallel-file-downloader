@@ -43,9 +43,11 @@ data class FileChunk (
                 }
             }
 
+            println(response)
+
             if (response.status != HttpStatusCode.PartialContent) {
                 println("Something went wrong when getting the chunk! Status code: ${response.status}")
-                return FileChunk(start, end, ByteArray(0))
+                throw Exception("Failed to fetch file chunk! Status code: ${response.status}")
             }
 
             val rawBytes = response.readRawBytes()
