@@ -1,13 +1,6 @@
 import io.ktor.client.HttpClient
-import io.ktor.client.engine.mock.MockEngine
-import io.ktor.client.engine.mock.respond
 import io.ktor.client.request.get
 import io.ktor.client.statement.readRawBytes
-import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpMethod
-import io.ktor.http.HttpStatusCode
-import io.ktor.http.headersOf
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import me.dariusit.downloader.Downloader
 import me.dariusit.downloader.FileChunk
