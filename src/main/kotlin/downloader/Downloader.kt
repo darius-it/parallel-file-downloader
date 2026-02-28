@@ -16,8 +16,21 @@ object Downloader {
 
     private var client: HttpClient = HttpClient(CIO)
 
-    suspend fun downloadFile(fileName: String, saveToDisk: Boolean = true) {
-        val fileUrl = "$SERVER_URL/$fileName"
+    /**
+     * Fetch file properties and download in parallel
+     *
+     * @param fileName the name of the file to download (e.g. "mastodon.svg")
+     * @param serverUrl the base URL of the server to download from (default: "http://localhost:8080")
+     * @param parallelDownloadChunks the number of chunks to download in parallel (default: 2)
+     * @param saveToDisk whether to save the downloaded file to disk (default: true)
+     */
+    suspend fun downloadFile(
+        fileName: String,
+        serverUrl: String = SERVER_URL,
+        parallelDownloadChunks: Int = PARALLEL_DOWNLOAD_CHUNKS,
+        saveToDisk: Boolean = true
+    ) {
+        val fileUrl = "$serverUrl/$fileName"
         val fileProperties = fetchFileProperties(client, fileUrl)
         val contentLength = fileProperties?.contentLength ?: 0
 
@@ -28,8 +41,8 @@ object Downloader {
             return
         }
 
-        val downloadChunkSize = (contentLength.toDouble() / PARALLEL_DOWNLOAD_CHUNKS).let { ceil(it).toInt() };
-        println("Downloading $PARALLEL_DOWNLOAD_CHUNKS chunks in parallel with size $downloadChunkSize...")
+        val downloadChunkSize = (contentLength.toDouble() / parallelDownloadChunks).let { ceil(it).toInt() };
+        println("Downloading $parallelDownloadChunks chunks in parallel with size $downloadChunkSize...")
 
         val rawData = downloadInParallel(fileUrl, contentLength, downloadChunkSize)
 
@@ -37,6 +50,11 @@ object Downloader {
             File(fileName).writeBytes(rawData)
     }
 
+    /**
+     * Calculate the byte ranges for each chunk based on the total file size and intended chunk size
+     *
+     * @return Pairs of (start, end) byte indices, e.g. (0, 500), (500, 1000), etc.
+     */
     fun calculateChunkRanges(totalSize: Int, chunkSize: Int): List<Pair<Int, Int>> {
         val chunkRanges = mutableListOf<Pair<Int, Int>>()
         var currentStart = 0
@@ -50,8 +68,11 @@ object Downloader {
         return chunkRanges
     }
 
+    /**
+        Download the file in parallel by fetching multiple chunks concurrently using coroutines.
+        Each chunk is fetched using a Range request, and all chunks are combined into a single byte array at the end.
+     */
     suspend fun downloadInParallel(fileName: String, totalSize: Int, chunkSize: Int): ByteArray {
-        // get all chunk boundaries
         val chunkRanges = calculateChunkRanges(totalSize, chunkSize)
 
         // start download of chunks in parallel (coroutines), wait for all to finish
