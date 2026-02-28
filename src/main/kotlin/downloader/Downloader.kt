@@ -23,13 +23,15 @@ object Downloader {
      * @param serverUrl the base URL of the server to download from (default: "http://localhost:8080")
      * @param parallelDownloadChunks the number of chunks to download in parallel (default: 2)
      * @param saveToDisk whether to save the downloaded file to disk (default: true)
+     *
+     * @return the raw byte array of the downloaded file
      */
     suspend fun downloadFile(
         fileName: String,
         serverUrl: String = SERVER_URL,
         parallelDownloadChunks: Int = PARALLEL_DOWNLOAD_CHUNKS,
         saveToDisk: Boolean = true
-    ) {
+    ): ByteArray? {
         val fileUrl = "$serverUrl/$fileName"
         val fileProperties = fetchFileProperties(client, fileUrl)
         val contentLength = fileProperties?.contentLength ?: 0
@@ -38,7 +40,7 @@ object Downloader {
 
         if (contentLength <= 0) {
             println("File is empty or content length could not be determined, aborting download.")
-            return
+            return null
         }
 
         val downloadChunkSize = (contentLength.toDouble() / parallelDownloadChunks).let { ceil(it).toInt() };
@@ -48,6 +50,8 @@ object Downloader {
 
         if (saveToDisk)
             File(fileName).writeBytes(rawData)
+
+        return rawData
     }
 
     /**
