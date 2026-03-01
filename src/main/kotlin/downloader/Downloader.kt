@@ -14,8 +14,8 @@ import java.io.File
 import kotlin.math.ceil
 
 object Downloader {
-    private var SERVER_URL = "http://localhost:8080";
-    private var PARALLEL_DOWNLOAD_CHUNKS = 2;
+    private var SERVER_URL = "http://localhost:8080"
+    private var PARALLEL_DOWNLOAD_CHUNKS = 2
 
     var client: HttpClient = HttpClient(CIO)
 
@@ -59,7 +59,7 @@ object Downloader {
             val requestData = client.get(fileUrl)
             rawData = requestData.readRawBytes()
         } else {
-            val downloadChunkSize = (contentLength.toDouble() / parallelDownloadChunks).let { ceil(it).toInt() };
+            val downloadChunkSize = (contentLength.toDouble() / parallelDownloadChunks).let { ceil(it).toInt() }
             logger.debug { "Downloading $parallelDownloadChunks chunks in parallel with size $downloadChunkSize..." }
 
             rawData = downloadInParallel(fileUrl, contentLength, downloadChunkSize)
@@ -127,6 +127,6 @@ object Downloader {
         }
         require(combinedData.size == totalSize) { "Combined data size does not match total size!" }
 
-        return combinedData;
+        return combinedData
     }
 }
