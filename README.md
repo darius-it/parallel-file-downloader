@@ -77,7 +77,7 @@ What works well with my implementation:
   downloading files to disk.
 - Another thing I enjoyed about Ktor was also the ability to test HTTP Client logic by creating mock engines. Like this,
   I was able to simulate different web server behavior reliably and in a lightweight way.
-- Lastly, I noticed that I was sacrificing memory usage and potentially performance by using the `reduce` methode (
+- Lastly, I noticed that I was sacrificing memory usage and potentially performance by using the `reduce` method (
   because functional methods work immutably, we create a new temp array every time we add a chunk onto the accumulator).
   To solve this, I opted for a more naive approach with loops.
 
