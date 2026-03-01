@@ -73,16 +73,15 @@ Key points of this implementation:
   Multiplatform too.
 - Another thing I enjoyed about Ktor was the ability to test HTTP Client logic by creating mock engines. Like this,
   I was able to simulate different web server behavior reliably and in a lightweight way.
-- Lastly, I noticed that I was sacrificing memory usage and potentially performance by using the `reduce` method (
-  because functional methods work immutably, we create a new temporary array every time we add a chunk onto the
-  accumulator).
-  To solve this, I opted for a more naive approach with loops which should run in O(n) by using simple appending.
+- During development, I identified a performance improvement by replacing the `reduce` method with a loop-based
+  approach. This avoids creating temporary arrays on each iteration and improves memory efficiency through simple
+  appending (O(n) complexity).
 
 What could be improved & ideas to add:
 
 - Some methods could be split up into smaller pieces to make more focused/isolated unit tests.
 - Another feature which could be implemented for a real-world scenario would be enabling retries on the Ktor
-  client. This would make our fetching more robust and account for temporary web server failures.
+  client. This would make fetching more robust and account for temporary web server failures.
 - Some other interesting ideas could be turning the downloader into a CLI application or actual reusable library.
 - The only change that would be needed for Kotlin Multiplatform compatibility on non-JVM targets is a platform-specific
   implementation for
