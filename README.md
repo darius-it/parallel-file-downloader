@@ -7,7 +7,7 @@ A simple tool to download files from a web server in chunks (using the `Range` h
 ## How to use
 
 Prerequisite is a web server which supports downloading in chunks using the `Range` header (so for example an Apache web
-server pointed to server some files to be downloaded).
+server pointed to serve some files to be downloaded).
 
 The downloader logic is exposed through the `downloadFile()` method, which can be used as follows:
 
