@@ -1,10 +1,10 @@
 package me.dariusit.downloader
 
 import io.github.oshai.kotlinlogging.KotlinLogging
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.request.get
-import io.ktor.client.statement.readRawBytes
+import io.ktor.client.*
+import io.ktor.client.engine.cio.*
+import io.ktor.client.request.*
+import io.ktor.client.statement.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -37,7 +37,7 @@ object Downloader {
         parallelDownloadChunks: Int = PARALLEL_DOWNLOAD_CHUNKS,
         saveToDisk: Boolean = true
     ): ByteArray {
-        require (parallelDownloadChunks > 0) {
+        require(parallelDownloadChunks > 0) {
             "Invalid number of parallel download chunks: $parallelDownloadChunks. Must be greater than 0."
         }
 
@@ -48,7 +48,7 @@ object Downloader {
         val fileProperties = fetchFileProperties(client, fileUrl)
         val contentLength = fileProperties?.contentLength ?: 0
 
-        require (contentLength > 0) {
+        require(contentLength > 0) {
             "File is empty or content length could not be determined, aborting download."
         }
 
@@ -89,12 +89,14 @@ object Downloader {
             currentStart = currentEnd
         }
 
+        println(chunkRanges)
+
         return chunkRanges
     }
 
     /**
-        Download the file in parallel by fetching multiple chunks concurrently using coroutines.
-        Each chunk is fetched using a Range request, and all chunks are combined into a single byte array at the end.
+    Download the file in parallel by fetching multiple chunks concurrently using coroutines.
+    Each chunk is fetched using a Range request, and all chunks are combined into a single byte array at the end.
      */
     suspend fun downloadInParallel(fileName: String, totalSize: Int, chunkSize: Int): ByteArray {
         val chunkRanges = calculateChunkRanges(totalSize, chunkSize)
