@@ -52,10 +52,10 @@ Gradle, use the following command in the terminal:
    which provides the main `downloadFile` method which handles the entire download logic.
 
 5. After the general implementation was done, my goal for testing was covering the main stages of the download process (
-   so each method available in my downloader package). Because Ktor and Kotlin Coroutines do a lot of heavy lifting, at
-   some points it was difficult to create "actual" unit tests, so you can argue they are somewhere between a unit and
-   integration test. (They use a Ktor mock engine to simulate the behavior of our web server.) <br> Nevertheless, there
-   are tests like `testCalculateChunkRanges` which test logic in isolation and don't depend on our Ktor HTTP client.
+   so each method available in my downloader package). To test my logic in isolation, because many parts depend on HTTP
+   requests, I used a Ktor mock engine which simulates our expected responses from the web server without relying on
+   actual HTTP requests. Moreover, I put the focus on making sure the main downloading logic works as expected, but also
+   tested some cases where the downloader should throw errors.
 
 6. Lastly, I added some more complex tests to test cases where fundamental assumptions about our web server don't apply,
    for example the Range header not working.
