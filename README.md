@@ -55,38 +55,35 @@ Gradle, use the following command in the terminal:
    available in my downloader package). To test my logic in isolation, because many parts depend on HTTP
    requests, I used a Ktor mock engine which simulates our expected responses from the web server without relying on
    actual HTTP requests. With some JUnit tests, I covered the primary cases where downloads should work but also tested
-   some cases where errors should be thrown (e.g. empty parameters, trying to dowload 0 chunks).
+   some cases where errors should be thrown (e.g. empty parameters, trying to download 0 chunks).
 
 6. Lastly, I added some more complex tests to test cases where fundamental assumptions about our web server don't apply,
-   for example one chunk returning an internal server error (that case our download should stop immediately and
+   for example one chunk returning an internal server error. (In that case our download should stop immediately and
    throw an error).
-
-Overall, the implementation was not the difficult part, rather knowing what exactly to test and how far to go with it.
-While there is lots to handle and I couldn't possibly cover everything, the core logic should be reasonably robust now.
-
-In the end, my focus was on progressively improving my prototype and making something that works, because this seemingly
-trivial task of downloading a file offers room for endless optimization.
 
 ## Technical observations
 
-What works well with my implementation:
+Key points of this implementation:
 
-- By using idiomatic Kotlin (coroutines, data classes, etc.) and Ktor it was very easy to implement a simple solution
+- Idiomatic Kotlin (coroutines, data classes, etc.) and Ktor were very suited to implement a simple solution
   that leverages powerful language features.
-- Particularly, Coroutines made it very simple to defer results, wait for them to finish and put them back together in
-  the order they were called.
-- Ktor also helps a lot because it abstracts away the HTTP Client logic, making the downloader compatible for Kotlin
-  Multiplatform too. The only change that would be needed for non-JVM targets is a different implementation for
-  downloading files to disk.
-- Another thing I enjoyed about Ktor was also the ability to test HTTP Client logic by creating mock engines. Like this,
+- Particularly, Coroutines were useful to defer the individual chunk downloads, await their results and aggregate them
+  in the end.
+- Ktor is also fitting because it abstracts away the HTTP Client logic, making the downloader compatible for Kotlin
+  Multiplatform too.
+- Another thing I enjoyed about Ktor was the ability to test HTTP Client logic by creating mock engines. Like this,
   I was able to simulate different web server behavior reliably and in a lightweight way.
 - Lastly, I noticed that I was sacrificing memory usage and potentially performance by using the `reduce` method (
-  because functional methods work immutably, we create a new temp array every time we add a chunk onto the accumulator).
-  To solve this, I opted for a more naive approach with loops.
+  because functional methods work immutably, we create a new temporary array every time we add a chunk onto the
+  accumulator).
+  To solve this, I opted for a more naive approach with loops which should run in O(n) by using simple appending.
 
 What could be improved & ideas to add:
 
 - Some methods could be split up into smaller pieces to make more focused/isolated unit tests.
-- Another feature which could be implemented easily for a real-world scenario would be enabling retries on the Ktor
+- Another feature which could be implemented for a real-world scenario would be enabling retries on the Ktor
   client. This would make our fetching more robust and account for temporary web server failures.
 - Some other interesting ideas could be turning the downloader into a CLI application or actual reusable library.
+- The only change that would be needed for Kotlin Multiplatform compatibility on non-JVM targets is a platform-specific
+  implementation for
+  downloading files to disk (for example using a library like FileKit).
