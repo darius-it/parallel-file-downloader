@@ -1,5 +1,7 @@
 # Parallel File Downloader
 
+[![Tests](https://github.com/darius-it/parallel-file-downloader/actions/workflows/run-tests.yml/badge.svg)](https://github.com/darius-it/parallel-file-downloader/actions/workflows/run-tests.yml)
+
 A simple tool to download files from a web server in chunks (using the `Range` header) which are downloaded in parallel.
 
 ## How to use
@@ -52,7 +54,7 @@ Gradle, use the following command in the terminal:
 5. After the general implementation was done, my goal for testing was covering the main stages of the download process (
    so each method available in my downloader package). Because Ktor and Kotlin Coroutines do a lot of heavy lifting, at
    some points it was difficult to create "actual" unit tests, so you can argue they are somewhere between a unit and
-   integration test (they use a Ktor mock engine to simulate the behaviour of our web server). <br> Nevertheless, there
+   integration test. (They use a Ktor mock engine to simulate the behavior of our web server.) <br> Nevertheless, there
    are tests like `testCalculateChunkRanges` which test logic in isolation and don't depend on our Ktor HTTP client.
 
 6. Lastly, I added some more complex tests to test cases where fundamental assumptions about our web server don't apply,
@@ -87,8 +89,3 @@ What could be improved & ideas to add:
 - Another feature which could be implemented easily for a real-world scenario would be enabling retries on the Ktor
   client. This would make our fetching more robust and account for temporary web server failures.
 - Some other interesting ideas could be turning the downloader into a CLI application or actual reusable library.
-
-## TODOS
-
-- GitHub Action (on each commit test suite, works easily because lightweight with mock engine)
-- Dockerfiles for test web server with test files
