@@ -1,14 +1,12 @@
-import io.ktor.client.HttpClient
-import io.ktor.client.request.get
-import io.ktor.client.statement.readRawBytes
+import io.ktor.client.*
+import io.ktor.client.request.*
+import io.ktor.client.statement.*
 import kotlinx.coroutines.runBlocking
 import me.dariusit.downloader.Downloader
 import me.dariusit.downloader.FileChunk
 import me.dariusit.downloader.FileProperties
 import me.dariusit.downloader.FileProperties.Companion.fetchFileProperties
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertThrows
-import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import kotlin.random.Random
@@ -40,13 +38,18 @@ class DownloaderTests {
             var coveredBytes = 0
             for (range in chunkRanges) {
                 assertEquals(range.first, coveredBytes) {
-                    "Chunk range does not start where the last one ended! Expected ${coveredBytes}, but got ${range.first}" }
+                    "Chunk range does not start where the last one ended! Expected ${coveredBytes}, but got ${range.first}"
+                }
                 assertTrue(range.second <= totalSize) {
-                    "Chunk range end exceeds total file size! Expected at most ${totalSize}, but got ${range.second}" }
+                    "Chunk range end exceeds total file size! Expected at most ${totalSize}, but got ${range.second}"
+                }
                 coveredBytes += (range.second - range.first)
             }
 
-            assertEquals(totalSize, coveredBytes) { "Chunk ranges do not cover the entire file! Expected to cover ${totalSize} bytes, but covered ${coveredBytes} bytes" }
+            assertEquals(
+                totalSize,
+                coveredBytes
+            ) { "Chunk ranges do not cover the entire file! Expected to cover $totalSize bytes, but covered $coveredBytes bytes" }
         }
     }
 
@@ -62,7 +65,8 @@ class DownloaderTests {
         assertTrue(fileProperties != null) { "Failed to fetch file properties!" }
         assertTrue(fileProperties?.acceptRanges != null) { "Server does not support range requests!" }
         assertEquals("bytes", fileProperties?.acceptRanges) {
-            "Server does not support byte range requests! Got ${fileProperties?.acceptRanges} instead" }
+            "Server does not support byte range requests! Got ${fileProperties?.acceptRanges} instead"
+        }
 
         // check if content length is correct
         assertTrue(
@@ -83,14 +87,18 @@ class DownloaderTests {
         assertTrue(fileChunk != null) { "Failed to fetch file chunk!" }
 
         val expectedChunkRange = (fileChunk?.end ?: 0) - (fileChunk?.start ?: 0)
-        assertEquals (fileChunk?.rawBytes?.size, expectedChunkRange){ "Chunk boundaries do not correspond to fetched chunk size!" }
+        assertEquals(
+            fileChunk?.rawBytes?.size,
+            expectedChunkRange
+        ) { "Chunk boundaries do not correspond to fetched chunk size!" }
 
         // probably redundant with previous check but it doesn't hurt to check both ways
         assertEquals(512, fileChunk?.rawBytes?.size) {
-            "Fetched chunk has incorrect size! Expected 512 bytes, but got ${fileChunk?.rawBytes?.size} bytes" }
+            "Fetched chunk has incorrect size! Expected 512 bytes, but got ${fileChunk?.rawBytes?.size} bytes"
+        }
     }
 
-    // tests for downloading file in 2,3,6 chunks, check if combined file == original (checksum and bytes)
+    // tests for downloading file in different chunk sizes, check if combined file == original (checksum and bytes)
     fun testDownloadInParallelVariableChunks(chunks: Int) {
         val serverUrl = "https://mockserver"
         val fileName = "testfile"
@@ -105,7 +113,8 @@ class DownloaderTests {
             val completeFileData = directDownload.readRawBytes()
 
             assertEquals(contentLength, parallelDownloadedData.size) {
-                "Downloaded data size does not match expected content length! Expected $contentLength bytes, but got ${parallelDownloadedData.size} bytes" }
+                "Downloaded data size does not match expected content length! Expected $contentLength bytes, but got ${parallelDownloadedData.size} bytes"
+            }
 
             assertTrue(parallelDownloadedData.contentEquals(completeFileData)) {
                 "Downloaded data does not match original file data!"
@@ -136,35 +145,35 @@ class DownloaderTests {
      */
     @Test
     fun testDownloadFileInvalidChunkCount() {
-        assertThrows (IllegalArgumentException::class.java) {
+        assertThrows(IllegalArgumentException::class.java) {
             testDownloadInParallelVariableChunks(-1)
         }
 
-        assertThrows (IllegalArgumentException::class.java) {
+        assertThrows(IllegalArgumentException::class.java) {
             testDownloadInParallelVariableChunks(0)
         }
     }
 
     @Test
     fun testChunkRangeInvalid() {
-        assertThrows (IllegalArgumentException::class.java) {
+        assertThrows(IllegalArgumentException::class.java) {
             Downloader.calculateChunkRanges(0, 999)
         }
 
-        assertThrows (IllegalArgumentException::class.java) {
+        assertThrows(IllegalArgumentException::class.java) {
             Downloader.calculateChunkRanges(1000, 0)
         }
     }
 
     @Test
     fun testEmptyFileOrServerName() {
-        assertThrows (IllegalArgumentException::class.java) {
+        assertThrows(IllegalArgumentException::class.java) {
             runBlocking {
                 Downloader.downloadFile("", "https://mockserver", 2, false)
             }
         }
 
-        assertThrows (IllegalArgumentException::class.java) {
+        assertThrows(IllegalArgumentException::class.java) {
             runBlocking {
                 Downloader.downloadFile("testfile", "", 2, false)
             }
@@ -173,7 +182,7 @@ class DownloaderTests {
 
     @Test
     fun testChunkDownloadFullFile() {
-        assertThrows (Exception::class.java) {
+        assertThrows(Exception::class.java) {
             runBlocking {
                 FileChunk.fetchChunk(httpClient, "https://mockserver/testfile", 0, testFileSize + 1)
             }
