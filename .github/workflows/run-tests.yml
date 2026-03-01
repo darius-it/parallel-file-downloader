@@ -1,10 +1,10 @@
-name: Run tests on commit
+name: Tests
 
 on:
   push:
 
 jobs:
-  gradle:
+  tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
