@@ -1,8 +1,11 @@
 Improvement ideas (some from prev interview):
 - ~~use dependency injection for Ktor client/dependencies~~
 - stream files to disk!!
+- check if any of the functions can be cleaned up/refactored
+- add more tests, especially for more complicated failure cases (use mock engines)
 - use named exceptions for improved error handling, throw them from our downloader method or something like that; for example for network retries, individual chunks failing, think of some cases
 - maybe do benchmarking, test various file sizes -> https://openjdk.org/projects/code-tools/jmh/
+
 
 Technical notes:
 Improvements:
