@@ -1,5 +1,6 @@
 package me.dariusit.downloader
 
+import io.github.oshai.kotlinlogging.KLogger
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
@@ -13,13 +14,14 @@ import me.dariusit.downloader.FileProperties.Companion.fetchFileProperties
 import java.io.File
 import kotlin.math.ceil
 
-object Downloader {
-    private var SERVER_URL = "http://localhost:8080"
-    private var PARALLEL_DOWNLOAD_CHUNKS = 2
-
-    var client: HttpClient = HttpClient(CIO)
-
-    private val logger = KotlinLogging.logger {}
+class Downloader (
+    serverUrl: String = "localhost:8080",
+    parallelDownloadChunks: Int = 2,
+    private val httpClient: HttpClient,
+    private val logger: KLogger
+) {
+    private val defaultServerUrl = serverUrl
+    private val defaultParallelDownloadChunks = parallelDownloadChunks
 
     /**
      * Fetch file properties and download in parallel
@@ -33,8 +35,8 @@ object Downloader {
      */
     suspend fun downloadFile(
         fileName: String,
-        serverUrl: String = SERVER_URL,
-        parallelDownloadChunks: Int = PARALLEL_DOWNLOAD_CHUNKS,
+        serverUrl: String = defaultServerUrl,
+        parallelDownloadChunks: Int = defaultParallelDownloadChunks,
         saveToDisk: Boolean = true
     ): ByteArray {
         require(parallelDownloadChunks > 0) {
@@ -45,7 +47,7 @@ object Downloader {
         require(serverUrl.isNotBlank()) { "Server URL cannot be blank!" }
 
         val fileUrl = "$serverUrl/$fileName"
-        val fileProperties = fetchFileProperties(client, fileUrl)
+        val fileProperties = fetchFileProperties(httpClient, fileUrl)
         val contentLength = fileProperties?.contentLength ?: 0
 
         require(contentLength > 0) {
@@ -56,7 +58,7 @@ object Downloader {
 
         if (parallelDownloadChunks == 1) {
             logger.debug { "Downloading file in a single chunk since parallelDownloadChunks is set to 1..." }
-            val requestData = client.get(fileUrl)
+            val requestData = httpClient.get(fileUrl)
             rawData = requestData.readRawBytes()
         } else {
             val downloadChunkSize = (contentLength.toDouble() / parallelDownloadChunks).let { ceil(it).toInt() }
@@ -89,7 +91,7 @@ object Downloader {
             currentStart = currentEnd
         }
 
-        println(chunkRanges)
+        logger.debug{ "Determined chunk ranges for download: $chunkRanges" }
 
         return chunkRanges
     }
@@ -105,7 +107,7 @@ object Downloader {
         val chunks = coroutineScope {
             chunkRanges.map { range ->
                 async(Dispatchers.Default) {
-                    val chunkData = FileChunk.fetchChunk(client, fileName, range.first, range.second)
+                    val chunkData = FileChunk.fetchChunk(httpClient, fileName, range.first, range.second)
                     val expectedChunkSize = range.second - range.first
 
                     if (chunkData.rawBytes.size != expectedChunkSize) {
