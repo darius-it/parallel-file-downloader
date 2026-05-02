@@ -1,7 +1,10 @@
 package me.dariusit
 
-import me.dariusit.downloader.Downloader.downloadFile
+import me.dariusit.di.AppContainer
 
 suspend fun main() {
-    downloadFile("mastodon.svg")
+    val container = AppContainer()
+    val downloader = container.getDownloaderInstance()
+
+    downloader.downloadFile("mastodon.png")
 }
