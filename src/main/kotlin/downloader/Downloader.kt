@@ -13,7 +13,7 @@ import java.io.File
 import kotlin.math.ceil
 
 class Downloader (
-    serverUrl: String = "localhost:8080",
+    serverUrl: String = "http://localhost:8080",
     parallelDownloadChunks: Int = 2,
     private val httpClient: HttpClient,
     private val logger: KLogger
