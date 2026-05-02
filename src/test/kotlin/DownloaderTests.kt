@@ -1,3 +1,5 @@
+import io.github.oshai.kotlinlogging.KLogger
+import io.github.oshai.kotlinlogging.KotlinLogging.logger
 import io.ktor.client.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
@@ -8,6 +10,7 @@ import me.dariusit.downloader.FileProperties
 import me.dariusit.downloader.FileProperties.Companion.fetchFileProperties
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import kotlin.random.Random
 
@@ -16,14 +19,19 @@ class DownloaderTests {
     private val testFileData = Random.nextBytes(testFileSize)
 
     // Mock Engine that simulates a file server supporting range requests
-    private val mockEngine = WebServerMock.getMockEngine(1024, testFileData)
+    private val defaultMockEngine = WebServerMock.getMockEngine(1024, testFileData)
 
     private lateinit var httpClient: HttpClient
 
+    private lateinit var downloader: Downloader
+
+    private lateinit var logger: KLogger
+
     @BeforeEach
     fun setup() {
-        httpClient = HttpClient(mockEngine)
-        Downloader.client = httpClient
+        logger = logger {}
+        httpClient = HttpClient(defaultMockEngine)
+        downloader = Downloader(httpClient=httpClient, logger=logger)
     }
 
     @Test
@@ -32,7 +40,7 @@ class DownloaderTests {
         val chunkSize = 500
 
         for (totalSize in totalSizes) {
-            val chunkRanges = Downloader.calculateChunkRanges(totalSize, chunkSize)
+            val chunkRanges = downloader.calculateChunkRanges(totalSize, chunkSize)
 
             // check that the chunk ranges cover the entire file without overlap
             var coveredBytes = 0
@@ -107,7 +115,7 @@ class DownloaderTests {
             val fileProperties = fetchFileProperties(httpClient, "$serverUrl/$fileName")
             val contentLength = fileProperties?.contentLength ?: 0
 
-            val parallelDownloadedData = Downloader.downloadFile(fileName, serverUrl, chunks, false)
+            val parallelDownloadedData = downloader.downloadFile(fileName, serverUrl, chunks, false)
 
             val directDownload = httpClient.get("$serverUrl/$fileName")
             val completeFileData = directDownload.readRawBytes()
@@ -157,11 +165,11 @@ class DownloaderTests {
     @Test
     fun testChunkRangeInvalid() {
         assertThrows(IllegalArgumentException::class.java) {
-            Downloader.calculateChunkRanges(0, 999)
+            downloader.calculateChunkRanges(0, 999)
         }
 
         assertThrows(IllegalArgumentException::class.java) {
-            Downloader.calculateChunkRanges(1000, 0)
+            downloader.calculateChunkRanges(1000, 0)
         }
     }
 
@@ -169,13 +177,13 @@ class DownloaderTests {
     fun testEmptyFileOrServerName() {
         assertThrows(IllegalArgumentException::class.java) {
             runBlocking {
-                Downloader.downloadFile("", "https://mockserver", 2, false)
+                downloader.downloadFile("", "https://mockserver", 2, false)
             }
         }
 
         assertThrows(IllegalArgumentException::class.java) {
             runBlocking {
-                Downloader.downloadFile("testfile", "", 2, false)
+                downloader.downloadFile("testfile", "", 2, false)
             }
         }
     }
@@ -189,31 +197,43 @@ class DownloaderTests {
         }
     }
 
-    @Test
-    fun testDownloadFailsWhenOneChunkFails() {
-        val failureMockEngine = WebServerMock.getFailureMockEngine()
+    @Nested
+    inner class NetworkFailureTests {
+        @BeforeEach
+        fun setupFailingNetwork() {
+            val failureMockEngine = WebServerMock.getFailureMockEngine()
 
-        val errorClient = HttpClient(failureMockEngine)
-        Downloader.client = errorClient
+            httpClient = HttpClient(failureMockEngine)
+            downloader = Downloader(httpClient=httpClient, logger=logger)
+        }
 
-        assertThrows(Exception::class.java) {
-            runBlocking {
-                Downloader.downloadFile("testfile", "https://faulty-server", 4, false)
+        @Test
+        fun testDownloadFailsWhenOneChunkFails() {
+            assertThrows(Exception::class.java) {
+                runBlocking {
+                    downloader.downloadFile("testfile", "https://faulty-server", 4, false)
+                }
             }
         }
     }
 
-    @Test
-    fun testChunkAssemblyWithDelays() {
-        val slowMockEngine = WebServerMock.getDelayedChunkMockEngine(testFileSize, testFileData)
+    @Nested
+    inner class NetworkDelayTests {
+        @BeforeEach
+        fun setupSlowNetwork() {
+            val slowMockEngine = WebServerMock.getDelayedChunkMockEngine(testFileSize, testFileData)
 
-        val slowClient = HttpClient(slowMockEngine)
-        Downloader.client = slowClient
+            httpClient = HttpClient(slowMockEngine)
+            downloader = Downloader(httpClient=httpClient, logger=logger)
+        }
 
-        runBlocking {
-            val downloadedData = Downloader.downloadFile("testfile", "https://slow-server", 4, false)
-            assertTrue(downloadedData.contentEquals(testFileData)) {
-                "Parallel chunks were not assembled in the correct order."
+        @Test
+        fun testChunkAssemblyWithDelays() {
+            runBlocking {
+                val downloadedData = downloader.downloadFile("testfile", "https://slow-server", 4, false)
+                assertTrue(downloadedData.contentEquals(testFileData)) {
+                    "Parallel chunks were not assembled in the correct order."
+                }
             }
         }
     }
