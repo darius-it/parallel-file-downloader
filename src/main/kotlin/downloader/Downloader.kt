@@ -8,8 +8,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 import me.dariusit.downloader.FileProperties.Companion.fetchFileProperties
 import java.io.File
+import java.nio.ByteBuffer
+import java.nio.channels.FileChannel
+import java.nio.file.StandardOpenOption
 import kotlin.math.ceil
 
 class Downloader (
@@ -36,7 +40,7 @@ class Downloader (
         serverUrl: String = defaultServerUrl,
         parallelDownloadChunks: Int = defaultParallelDownloadChunks,
         saveToDisk: Boolean = true
-    ): ByteArray {
+    ) {
         require(parallelDownloadChunks > 0) {
             "Invalid number of parallel download chunks: $parallelDownloadChunks. Must be greater than 0."
         }
@@ -52,23 +56,18 @@ class Downloader (
             "File is empty or content length could not be determined, aborting download."
         }
 
-        var rawData: ByteArray?
-
         if (parallelDownloadChunks == 1) {
             logger.debug { "Downloading file in a single chunk since parallelDownloadChunks is set to 1..." }
             val requestData = httpClient.get(fileUrl)
-            rawData = requestData.readRawBytes()
+            writeChunk(File(fileName), 0, requestData.readRawBytes())
         } else {
             val downloadChunkSize = (contentLength.toDouble() / parallelDownloadChunks).let { ceil(it).toInt() }
             logger.debug { "Downloading $parallelDownloadChunks chunks in parallel with size $downloadChunkSize..." }
 
-            rawData = downloadInParallel(fileUrl, contentLength, downloadChunkSize)
+            downloadInParallel(fileUrl, contentLength, downloadChunkSize)
         }
 
-        if (saveToDisk)
-            File(fileName).writeBytes(rawData)
-
-        return rawData
+        // TODO: add back in-memory fallback if downloaded file doesn't exceed ByteArray size limit
     }
 
     /**
@@ -94,12 +93,23 @@ class Downloader (
         return chunkRanges
     }
 
+    /*
+        Given a file object, opens a FileChannel to stream one individual chunk of data to disk, starting at a specified position/offset.
+     */
+    fun writeChunk(file: File, position: Int, data: ByteArray) {
+        FileChannel.open(file.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { channel ->
+            val buffer = ByteBuffer.wrap(data)
+            channel.write(buffer, position.toLong())
+        }
+    }
+
     /**
     Download the file in parallel by fetching multiple chunks concurrently using coroutines.
     Each chunk is fetched using a Range request, and all chunks are combined into a single byte array at the end.
      */
-    suspend fun downloadInParallel(fileName: String, totalSize: Int, chunkSize: Int): ByteArray {
+    suspend fun downloadInParallel(fileName: String, totalSize: Int, chunkSize: Int) {
         val chunkRanges = calculateChunkRanges(totalSize, chunkSize)
+        val file = File(fileName.split("/").last())
 
         // start download of chunks in parallel (coroutines), wait for all to finish
         val chunks = coroutineScope {
@@ -113,20 +123,14 @@ class Downloader (
                     }
 
                     logger.debug { "Downloaded chunk ${range.first}-${range.second} with size ${chunkData.rawBytes.size}" }
-                    chunkData.rawBytes
+
+                    withContext(Dispatchers.IO) {
+                        writeChunk(file, range.first, chunkData.rawBytes)
+                    }
                 }
             }.awaitAll()
         }
 
-        // combine all chunks into one byte array
-        val combinedData = ByteArray(totalSize)
-        var offset = 0
-        for (chunk in chunks) {
-            chunk.copyInto(combinedData, destinationOffset = offset)
-            offset += chunk.size
-        }
-        require(combinedData.size == totalSize) { "Combined data size does not match total size!" }
-
-        return combinedData
+        // TODO: cleanup, add in-memory fallback (maybe list of ByteArrays or hard cap that max in mem size is one size of ByteArray)
     }
 }
