@@ -1,6 +1,7 @@
 Improvement ideas (some from prev interview):
 - ~~use dependency injection for Ktor client/dependencies~~
 - stream files to disk!!
+- probably better to switch to long and check if there's any parts that won't play nicely with very large files
 - check if any of the functions can be cleaned up/refactored
 - add more tests, especially for more complicated failure cases (use mock engines)
 - use named exceptions for improved error handling, throw them from our downloader method or something like that; for example for network retries, individual chunks failing, think of some cases
