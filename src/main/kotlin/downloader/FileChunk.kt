@@ -43,6 +43,16 @@ data class FileChunk (
     }
 
     companion object {
+        /**
+         * Fetch a specific chunk of a file via HTTP Range request.
+         *
+         * @param httpClient the Ktor HTTP client to use for the request
+         * @param fileName the URL of the file to fetch from
+         * @param start the starting byte position (inclusive)
+         * @param end the ending byte position (exclusive)
+         * @return a FileChunk containing the bytes between start and end
+         * @throws ChunkWrongStatusCodeException if response status is not PartialContent (206)
+         */
         suspend fun fetchChunk(httpClient: HttpClient, fileName: String, start: Int, end: Int): FileChunk {
             val response = httpClient.get(fileName) {
                 headers {
@@ -60,8 +70,12 @@ data class FileChunk (
         }
 
         /**
-            Given a Path object, opens a FileChannel to write one individual chunk of data to disk, starting at a specified position/offset.
-        */
+         * Write raw byte data to a file at a specific byte position using FileChannel for random access.
+         *
+         * @param filePath the destination file path
+         * @param position the byte offset where data should be written
+         * @param data the byte array to write
+         */
         fun writeChunk(filePath: Path, position: Int, data: ByteArray) {
             FileChannel.open(filePath, StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { channel ->
                 val buffer = ByteBuffer.wrap(data)

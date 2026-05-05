@@ -8,10 +8,15 @@ class FilePropertiesWrongStatusCodeException(statusCode: HttpStatusCode) :
     Exception("Failed to get file information via HEAD request (received unexpected HTTP status code $statusCode)!")
 
 data class FileProperties (val contentLength: Int, val acceptRanges: String? = null) {
-    // TODO: see if we can easily pull checksum from file server without downloading entire file
-    // Idea: add checksum files like for Linux ISOs and implement optional verification at the end of a download if they exist
-
     companion object {
+        /**
+         * Fetch file metadata via HTTP HEAD request.
+         *
+         * @param httpClient the Ktor HTTP client to use for the request
+         * @param fileName the URL of the file to query
+         * @return FileProperties containing content length and accept-ranges header
+         * @throws FilePropertiesWrongStatusCodeException if HEAD request returns status code other than OK (200)
+         */
         suspend fun fetchFileProperties(httpClient: HttpClient, fileName: String): FileProperties {
             val response = httpClient.head(fileName)
 

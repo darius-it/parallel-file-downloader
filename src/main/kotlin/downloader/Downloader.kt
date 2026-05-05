@@ -25,13 +25,14 @@ class Downloader (
 ) {
 
     /**
-     * Fetch file properties and download in parallel
+     * Fetch file properties and download a file in parallel chunks, streaming each chunk directly to disk.
      *
      * @param fileName the name of the file to download (e.g. "mastodon.svg")
      * @param serverUrl the base URL of the server to download from (default: "http://localhost:8080")
      * @param parallelDownloadChunks the number of chunks to download in parallel (default: 2)
-     *
-     * @return the raw byte array of the downloaded file
+     * @throws ChunkTooLargeException if a single chunk exceeds Int.MAX_VALUE
+     * @throws IllegalArgumentException if fileName, serverUrl, or parallelDownloadChunks are invalid
+     * @throws AssertionError if final downloaded file size doesn't match expected total size
      */
     suspend fun downloadFile(
         fileName: String,
@@ -51,6 +52,13 @@ class Downloader (
 
     /**
      * Stage 1 of download process: use HEAD request to get information about file to download (total size, does it accept byte ranges, etc.)
+     *
+     * @param fileName the name of the file to query
+     * @param serverUrl the base URL of the server
+     * @param parallelDownloadChunks the intended number of parallel chunks (used for validation)
+     * @return FileProperties containing the content length and accept-ranges header
+     * @throws IllegalArgumentException if any parameter is invalid
+     * @throws FilePropertiesWrongStatusCodeException if HEAD request returns unexpected status code
      */
     suspend fun getFileProperties(
         fileName: String,
@@ -75,9 +83,14 @@ class Downloader (
     }
 
     /**
-     * Calculate the byte ranges for each chunk based on the total file size and intended chunk size
+     * Calculate the byte ranges for each chunk based on the total file size and number of parallel chunks.
+     * Distributes remainder bytes among the first chunks to ensure even distribution.
      *
-     * @return Pairs of (start, end) byte indices, e.g. (0, 500), (500, 1000), etc.
+     * @param totalSize the total size of the file in bytes
+     * @param parallelDownloadChunks the number of chunks to divide the file into
+     * @return a list of Pairs containing (start, end) byte indices, e.g. [(0, 500), (500, 1000), ...]
+     * @throws IllegalArgumentException if totalSize or parallelDownloadChunks is <= 0
+     * @throws ChunkTooLargeException if a single chunk would exceed Int.MAX_VALUE
      */
     fun calculateChunkRanges(totalSize: Int, parallelDownloadChunks: Int): List<Pair<Int, Int>> {
         require(totalSize > 0) { "Total file size must be greater than 0!" }
@@ -106,15 +119,27 @@ class Downloader (
         return chunkRanges
     }
 
+    /**
+     * Get the destination file path, creating the file if it doesn't exist.
+     *
+     * @param fileName the name of the file to create
+     * @return the Path object pointing to the file
+     */
     fun getDestinationFilePath(fileName: String): Path {
         val filePath = Paths.get(fileName)
         return if (Files.notExists(filePath)) Files.createFile(filePath) else filePath
     }
 
     /**
-     *  Stage 2 of download process: go over each numerical chunk range, download it and save it to disk.
-        Multiple chunks are fetched concurrently using coroutines.
-        Each chunk is fetched using a Range request, and all chunks are combined into a single byte array at the end.
+     * Stage 2 of download process: download all chunks concurrently via Range requests and stream each chunk directly to disk.
+     * All chunks are downloaded in parallel using coroutines, and each chunk is written to its designated position in the file.
+     *
+     * @param downloadUrl the full URL to download from
+     * @param destinationFilePath the Path where chunks will be written
+     * @param chunkRanges list of (start, end) byte range pairs to download
+     * @param totalFileSize the expected total size of the downloaded file for validation
+     * @throws AssertionError if the final file size doesn't match the expected total size
+     * @throws Exception if any chunk download or write fails (and retries are exhausted)
      */
     suspend fun downloadInParallel(
         downloadUrl: String,
@@ -140,7 +165,13 @@ class Downloader (
     }
 
     /**
-     * Helper for downloadInParallel, downloads the contents of one singular chunk and saves them into our file on disk
+     * Download a single chunk of a file and write it to disk at the specified byte position.
+     *
+     * @param fileUrl the full URL to download from
+     * @param filePath the destination file path
+     * @param range a Pair of (start, end) byte indices for this chunk
+     * @throws ChunkSizeMismatchException if downloaded chunk size doesn't match expected size
+     * @throws ChunkWrongStatusCodeException if the HTTP response status code is not PartialContent
      */
     suspend fun downloadChunk(fileUrl: String, filePath: Path, range: Pair<Int, Int>) {
         val expectedChunkSize = range.second - range.first
@@ -158,11 +189,13 @@ class Downloader (
     }
 
     /**
-     * Retry `func` up to `maxRetries` times only when the thrown exception is one of [retryOn].
-     * Any other exception is rethrown immediately.
+     * Retry a suspend function multiple times if it throws specific retryable exceptions.
+     * Non-retryable exceptions are rethrown immediately.
      *
      * @param maxRetries number of retries in addition to the initial attempt (>= 0)
-     * @param retryOn array of Exception classes that are considered retryable.
+     * @param retryOn array of Exception classes that should trigger a retry
+     * @param func the suspend lambda to execute and retry on failure
+     * @throws Exception the last caught exception if all retries are exhausted, or immediately if non-retryable
      */
     suspend fun tryCatchWithRetry(
         maxRetries: Int = chunkFailureRetries,
