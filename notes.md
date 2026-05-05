@@ -3,11 +3,12 @@ TODOs:
 - ~~write files directly to disk~~
 - ~~check if any of the functions can be cleaned up/refactored~~
 - ~~use custom exceptions for better error handling~~
-- check for any weird/unnecessary type conversions between number formats
-- implement simple retry logic, only retry when hitting certain custom exceptions
-- add more tests, especially for more complicated failure cases (use mock engines)
-- adjust tests for refactored structure, should be easier to test because of more isolated logic
-- generate some checksum files for large test files, add optional addition to compare to those if they exist
+- ~~implement simple retry logic, only retry when hitting certain custom exceptions~~
+- adjust tests for refactored structure, should be easier to test because of more isolated logic -> WIP
+- try to further improve streaming logic for very big files
+- group individual test files into test suite, make sure it works fine in CI
+
+
 
 Technical notes:
 Improvements:
@@ -18,7 +19,7 @@ Improvements:
 
 - In a production setting it would probably make more sense to use Koin since it handles Singletons and many other situations for us, and it's also a bit nicer to test
 
-- Even with manual DI, our tests are much nicer since we don't need to replace the instance variable of the client but can rather initialize our Downloader with a different HttpClient dependency[]()
+- Even with manual DI, our tests are much nicer since we don't need to replace the instance variable of the client but can rather initialize our Downloader with a different HttpClient dependency
 
 
 Further improvements/changes that could be done:
