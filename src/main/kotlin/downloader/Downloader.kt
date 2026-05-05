@@ -14,7 +14,8 @@ import java.nio.file.Paths
 class ChunkSizeMismatchException(downloadedSize: Int, expectedSize: Int, range: Pair<Int, Int>) :
     Exception("Size of downloaded chunk ($downloadedSize) does not match expected chunk size ($expectedSize) for range (${range.first} - ${range.second})")
 
-class ChunkTooLargeException: Exception("Chunk size exceeds max size of Java (Byte)Array! Please increase the number of parallelDownloadChunks.")
+class ChunkTooLargeException:
+    Exception("Chunk size exceeds max size of Java (Byte)Array! Please increase the number of parallelDownloadChunks.")
 
 class Downloader (
     private val defaultServerUrl: String = "http://localhost:8080",
@@ -38,7 +39,6 @@ class Downloader (
         fileName: String,
         serverUrl: String = defaultServerUrl,
         parallelDownloadChunks: Int = parallelChunkAmount,
-        // TODO: consider if it makes sense to add configurable file info network retries and chunk fetch retries
     ) {
         logger.debug { "Fetching file properties for $fileName..." }
         val fileProperties = getFileProperties(fileName, serverUrl, parallelDownloadChunks)
