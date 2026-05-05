@@ -17,13 +17,12 @@ class ChunkSizeMismatchException(downloadedSize: Int, expectedSize: Int, range: 
 class ChunkTooLargeException: Exception("Chunk size exceeds max size of Java (Byte)Array! Please increase the number of parallelDownloadChunks.")
 
 class Downloader (
-    serverUrl: String = "http://localhost:8080",
-    parallelDownloadChunks: Int = 2,
+    private val defaultServerUrl: String = "http://localhost:8080",
+    private val parallelChunkAmount: Int = 2,
+    private val chunkFailureRetries: Int = 3,
     private val httpClient: HttpClient,
     private val logger: KLogger
 ) {
-    private val defaultServerUrl = serverUrl
-    private val defaultParallelDownloadChunks = parallelDownloadChunks
 
     /**
      * Fetch file properties and download in parallel
@@ -37,7 +36,7 @@ class Downloader (
     suspend fun downloadFile(
         fileName: String,
         serverUrl: String = defaultServerUrl,
-        parallelDownloadChunks: Int = defaultParallelDownloadChunks,
+        parallelDownloadChunks: Int = parallelChunkAmount,
         // TODO: consider if it makes sense to add configurable file info network retries and chunk fetch retries
     ) {
         logger.debug { "Fetching file properties for $fileName..." }
@@ -56,7 +55,7 @@ class Downloader (
     suspend fun getFileProperties(
         fileName: String,
         serverUrl: String = defaultServerUrl,
-        parallelDownloadChunks: Int = defaultParallelDownloadChunks
+        parallelDownloadChunks: Int = parallelChunkAmount
     ): FileProperties {
         require(parallelDownloadChunks > 0) {
             "Invalid number of parallel download chunks: $parallelDownloadChunks. Must be greater than 0."
