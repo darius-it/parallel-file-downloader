@@ -92,10 +92,8 @@ class Downloader (
     }
 
     suspend fun downloadChunk(fileUrl: String, filePath: Path, range: Pair<Int, Int>) {
-        val chunkData = FileChunk.fetchChunk(httpClient, fileUrl, range.first, range.second)
         val expectedChunkSize = range.second - range.first
-
-        // TODO: if fetchChunk throws exception, retry once or abort -> add some test for retry using mock engine
+        val chunkData = FileChunk.fetchChunk(httpClient, fileUrl, range.first, range.second)
 
         if (chunkData.rawBytes.size != expectedChunkSize) {
             throw ChunkSizeMismatchException(chunkData.rawBytes.size, expectedChunkSize, range)
@@ -113,7 +111,7 @@ class Downloader (
         Each chunk is fetched using a Range request, and all chunks are combined into a single byte array at the end.
      */
     suspend fun downloadInParallel(fileUrl: String, totalSize: Int, chunkSize: Int): Path {
-        val chunkRanges = calculateChunkRanges(totalSize, chunkSize) // TODO: check if chunk size exceeds ByteArray size limit, throw ChunkTooLargeException
+        val chunkRanges = calculateChunkRanges(totalSize, chunkSize) // TODO: check if chunk size exceeds ByteArray size limit, throw ChunkTooLargeException -> write test for this too
         val filePath = Paths.get(fileUrl.split("/").last()) // TODO: make sure file exists, create it if not
 
         // start download of chunks in parallel (coroutines), wait for all to finish
@@ -121,6 +119,8 @@ class Downloader (
             chunkRanges.map { range ->
                 async(Dispatchers.Default) {
                     downloadChunk(fileUrl, filePath, range)
+
+                    // TODO: add retry logic if we get ChunkSizeMismatchException or ChunkWrongStatusCodeException, don't retry on other network failures since Ktor can handle that via retry plugin
                 }
             }.awaitAll()
         }
