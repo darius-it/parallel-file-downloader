@@ -10,6 +10,9 @@ import java.nio.channels.FileChannel
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 
+class ChunkWrongStatusCodeException(statusCode: HttpStatusCode) :
+    Exception("Failed to fetch file chunk (received unexpected HTTP status code $statusCode)!")
+
 data class FileChunk (
     val start: Int,
     val end: Int,
@@ -48,8 +51,7 @@ data class FileChunk (
             }
 
             if (response.status != HttpStatusCode.PartialContent) {
-                println("Something went wrong when getting the chunk! Status code: ${response.status}")
-                throw Exception("Failed to fetch file chunk! Status code: ${response.status}") // TODO: create custom exception here
+                throw ChunkWrongStatusCodeException(response.status)
             }
 
             val rawBytes = response.readRawBytes()
