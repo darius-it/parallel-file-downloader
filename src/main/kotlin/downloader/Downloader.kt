@@ -2,11 +2,7 @@ package me.dariusit.downloader
 
 import io.github.oshai.kotlinlogging.KLogger
 import io.ktor.client.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -152,7 +148,7 @@ class Downloader (
             chunkRanges.map { range ->
                 async(Dispatchers.Default) {
                     tryCatchWithRetry {
-                        downloadChunk(downloadUrl, destinationFilePath, range)
+                        FileChunk.downloadChunk(httpClient, logger, downloadUrl, destinationFilePath, range)
                     }
                 }
             }.awaitAll()
@@ -165,27 +161,11 @@ class Downloader (
     }
 
     /**
-     * Download a single chunk of a file and write it to disk at the specified byte position.
-     *
-     * @param fileUrl the full URL to download from
-     * @param filePath the destination file path
-     * @param range a Pair of (start, end) byte indices for this chunk
-     * @throws ChunkSizeMismatchException if downloaded chunk size doesn't match expected size
-     * @throws ChunkWrongStatusCodeException if the HTTP response status code is not PartialContent
+     * Backward-compatible wrapper around the streaming chunk download implementation.
+     * Temporarily used for testing, see if we can get rid of this...
      */
     suspend fun downloadChunk(fileUrl: String, filePath: Path, range: Pair<Long, Long>) {
-        val expectedChunkSize = range.second - range.first
-        val chunkData = FileChunk.fetchChunk(httpClient, fileUrl, range.first, range.second)
-
-        if (chunkData.rawBytes.size.toLong() != expectedChunkSize) {
-            throw ChunkSizeMismatchException(chunkData.rawBytes.size.toLong(), expectedChunkSize, range)
-        }
-
-        logger.debug { "Downloaded chunk ${range.first}-${range.second} with size ${chunkData.rawBytes.size}" }
-
-        withContext(Dispatchers.IO) {
-            FileChunk.writeChunk(filePath, range.first, chunkData.rawBytes)
-        }
+        FileChunk.downloadChunk(httpClient, logger, fileUrl, filePath, range)
     }
 
     /**

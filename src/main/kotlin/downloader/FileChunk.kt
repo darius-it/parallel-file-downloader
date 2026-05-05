@@ -1,10 +1,17 @@
 package me.dariusit.downloader
 
+import io.github.oshai.kotlinlogging.KLogger
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.headers
-import io.ktor.client.statement.readRawBytes
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.utils.io.readTo
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.io.Buffer
+import kotlinx.io.RawSink
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.Path
@@ -13,73 +20,74 @@ import java.nio.file.StandardOpenOption
 class ChunkWrongStatusCodeException(statusCode: HttpStatusCode) :
     Exception("Failed to fetch file chunk (received unexpected HTTP status code $statusCode)!")
 
-data class FileChunk (
-    val start: Long,
-    val end: Long,
-    val rawBytes: ByteArray
-) {
-    override fun toString(): String {
-        return "bytes=$start-${end - 1}"
-    }
-
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (javaClass != other?.javaClass) return false
-
-        other as FileChunk
-
-        if (start != other.start) return false
-        if (end != other.end) return false
-        if (!rawBytes.contentEquals(other.rawBytes)) return false
-
-        return true
-    }
-
-    override fun hashCode(): Int {
-        var result = start.hashCode()
-        result = 31 * result + end.hashCode()
-        result = 31 * result + rawBytes.contentHashCode()
-        return result
-    }
-
-    companion object {
-        /**
-         * Fetch a specific chunk of a file via HTTP Range request.
-         *
-         * @param httpClient the Ktor HTTP client to use for the request
-         * @param fileName the URL of the file to fetch from
-         * @param start the starting byte position (inclusive)
-         * @param end the ending byte position (exclusive)
-         * @return a FileChunk containing the bytes between start and end
-         * @throws ChunkWrongStatusCodeException if response status is not PartialContent (206)
-         */
-        suspend fun fetchChunk(httpClient: HttpClient, fileName: String, start: Long, end: Long): FileChunk {
-            val response = httpClient.get(fileName) {
-                headers {
-                    append("Range", "bytes=${start}-${end - 1}")
-                }
+object FileChunk {
+    /**
+     * Download a single chunk of a file and write it to disk at the specified byte position.
+     *
+     * @param httpClient Ktor HTTP client used to download chunk
+     * @param logger logger object (KotlinLogging)
+     * @param fileUrl the full URL to download from
+     * @param filePath the destination file path
+     * @param range a Pair of (start, end) byte indices for this chunk
+     * @throws ChunkSizeMismatchException if downloaded chunk size doesn't match expected size
+     * @throws ChunkWrongStatusCodeException if the HTTP response status code is not PartialContent
+     */
+    suspend fun downloadChunk(
+        httpClient: HttpClient,
+        logger: KLogger,
+        fileUrl: String,
+        filePath: Path,
+        range: Pair<Long, Long>
+    ) {
+        val expectedChunkSize = range.second - range.first
+        val response = httpClient.get(fileUrl) {
+            headers {
+                append(HttpHeaders.Range, "bytes=${range.first}-${range.second - 1}")
             }
-
-            if (response.status != HttpStatusCode.PartialContent) {
-                throw ChunkWrongStatusCodeException(response.status)
-            }
-
-            val rawBytes = response.readRawBytes()
-
-            return FileChunk(start, end, rawBytes)
         }
 
-        /**
-         * Write raw byte data to a file at a specific byte position using FileChannel for random access.
-         *
-         * @param filePath the destination file path
-         * @param position the byte offset where data should be written
-         * @param data the byte array to write
-         */
-        fun writeChunk(filePath: Path, position: Long, data: ByteArray) {
-            FileChannel.open(filePath, StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { channel ->
-                val buffer = ByteBuffer.wrap(data)
-                channel.write(buffer, position)
+        if (response.status != HttpStatusCode.PartialContent) {
+            throw ChunkWrongStatusCodeException(response.status)
+        }
+
+        val channel = response.bodyAsChannel()
+
+        withContext(Dispatchers.IO) {
+            FileChannel.open(filePath, StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { fileChannel ->
+                var writePosition = range.first
+
+                val stream = object : RawSink {
+                    override fun write(source: Buffer, byteCount: Long) {
+                        val temp = ByteArray(DEFAULT_BUFFER_SIZE)
+                        var remaining = byteCount
+
+                        while (remaining > 0) {
+                            val toRead = minOf(temp.size.toLong(), remaining).toInt()
+                            val bytesRead = source.readAtMostTo(temp, 0, toRead)
+                            if (bytesRead <= 0) break
+
+                            var offset = 0
+                            while (offset < bytesRead) {
+                                val written = fileChannel.write(ByteBuffer.wrap(temp, offset, bytesRead - offset), writePosition)
+                                offset += written
+                                writePosition += written.toLong()
+                            }
+
+                            remaining -= bytesRead.toLong()
+                        }
+                    }
+
+                    override fun flush() = Unit
+                    override fun close() = Unit
+                }
+
+                val downloadedSize = channel.readTo(stream, expectedChunkSize)
+
+                if (downloadedSize != expectedChunkSize) {
+                    throw ChunkSizeMismatchException(downloadedSize, expectedChunkSize, range)
+                }
+
+                logger.debug { "Downloaded chunk ${range.first}-${range.second} with size $downloadedSize" }
             }
         }
     }
