@@ -14,8 +14,8 @@ class ChunkWrongStatusCodeException(statusCode: HttpStatusCode) :
     Exception("Failed to fetch file chunk (received unexpected HTTP status code $statusCode)!")
 
 data class FileChunk (
-    val start: Int,
-    val end: Int,
+    val start: Long,
+    val end: Long,
     val rawBytes: ByteArray
 ) {
     override fun toString(): String {
@@ -53,7 +53,7 @@ data class FileChunk (
          * @return a FileChunk containing the bytes between start and end
          * @throws ChunkWrongStatusCodeException if response status is not PartialContent (206)
          */
-        suspend fun fetchChunk(httpClient: HttpClient, fileName: String, start: Int, end: Int): FileChunk {
+        suspend fun fetchChunk(httpClient: HttpClient, fileName: String, start: Long, end: Long): FileChunk {
             val response = httpClient.get(fileName) {
                 headers {
                     append("Range", "bytes=${start}-${end - 1}")
@@ -76,10 +76,10 @@ data class FileChunk (
          * @param position the byte offset where data should be written
          * @param data the byte array to write
          */
-        fun writeChunk(filePath: Path, position: Int, data: ByteArray) {
+        fun writeChunk(filePath: Path, position: Long, data: ByteArray) {
             FileChannel.open(filePath, StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { channel ->
                 val buffer = ByteBuffer.wrap(data)
-                channel.write(buffer, position.toLong())
+                channel.write(buffer, position)
             }
         }
     }

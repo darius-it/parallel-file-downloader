@@ -2,12 +2,13 @@ package me.dariusit.downloader
 
 import io.ktor.client.HttpClient
 import io.ktor.client.request.head
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 
 class FilePropertiesWrongStatusCodeException(statusCode: HttpStatusCode) :
     Exception("Failed to get file information via HEAD request (received unexpected HTTP status code $statusCode)!")
 
-data class FileProperties (val contentLength: Int, val acceptRanges: String? = null) {
+data class FileProperties (val contentLength: Long, val acceptRanges: String? = null) {
     companion object {
         /**
          * Fetch file metadata via HTTP HEAD request.
@@ -25,8 +26,8 @@ data class FileProperties (val contentLength: Int, val acceptRanges: String? = n
             }
 
             return FileProperties(
-                contentLength = response.headers["content-length"]?.toInt() ?: 0,
-                acceptRanges = response.headers["accept-ranges"]
+                contentLength = response.headers[HttpHeaders.ContentLength]?.toLongOrNull() ?: 0L,
+                acceptRanges = response.headers[HttpHeaders.AcceptRanges]
             )
         }
     }

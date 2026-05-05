@@ -11,7 +11,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 
-class ChunkSizeMismatchException(downloadedSize: Int, expectedSize: Int, range: Pair<Int, Int>) :
+class ChunkSizeMismatchException(downloadedSize: Long, expectedSize: Long, range: Pair<Long, Long>) :
     Exception("Size of downloaded chunk ($downloadedSize) does not match expected chunk size ($expectedSize) for range (${range.first} - ${range.second})")
 
 class ChunkTooLargeException:
@@ -75,7 +75,7 @@ class Downloader (
         val fileUrl = "$serverUrl/$fileName"
         val fileProperties = FileProperties.fetchFileProperties(httpClient, fileUrl)
 
-        require(fileProperties.contentLength > 0) {
+        require(fileProperties.contentLength > 0L) {
             "File is empty or content length could not be determined, aborting download."
         }
 
@@ -92,23 +92,23 @@ class Downloader (
      * @throws IllegalArgumentException if totalSize or parallelDownloadChunks is <= 0
      * @throws ChunkTooLargeException if a single chunk would exceed Int.MAX_VALUE
      */
-    fun calculateChunkRanges(totalSize: Int, parallelDownloadChunks: Int): List<Pair<Int, Int>> {
-        require(totalSize > 0) { "Total file size must be greater than 0!" }
+    fun calculateChunkRanges(totalSize: Long, parallelDownloadChunks: Int): List<Pair<Long, Long>> {
+        require(totalSize > 0L) { "Total file size must be greater than 0!" }
         require(parallelDownloadChunks > 0) { "parallelDownloadChunks must be greater than 0!" }
 
-        val chunkCount = minOf(totalSize, parallelDownloadChunks)
+        val chunkCount = minOf(totalSize, parallelDownloadChunks.toLong())
         val baseChunkSize = totalSize / chunkCount
         val remainder = totalSize % chunkCount
 
-        if (baseChunkSize >= Int.MAX_VALUE) {
+        if (baseChunkSize > Int.MAX_VALUE.toLong() || (baseChunkSize == Int.MAX_VALUE.toLong() && remainder > 0L)) {
             throw ChunkTooLargeException()
         }
 
-        val chunkRanges = mutableListOf<Pair<Int, Int>>()
-        var currentStart = 0
+        val chunkRanges = mutableListOf<Pair<Long, Long>>()
+        var currentStart = 0L
 
-        repeat(chunkCount) { index ->
-            val currentChunkSize = baseChunkSize + if (index < remainder) 1 else 0
+        repeat(chunkCount.toInt()) { index ->
+            val currentChunkSize = baseChunkSize + if (index.toLong() < remainder) 1L else 0L
             val currentEnd = currentStart + currentChunkSize
             chunkRanges.add(currentStart to currentEnd)
             currentStart = currentEnd
@@ -144,8 +144,8 @@ class Downloader (
     suspend fun downloadInParallel(
         downloadUrl: String,
         destinationFilePath: Path,
-        chunkRanges: List<Pair<Int, Int>>,
-        totalFileSize: Int
+        chunkRanges: List<Pair<Long, Long>>,
+        totalFileSize: Long
     ) {
         // start download of chunks in parallel (coroutines), wait for all to finish
         coroutineScope {
@@ -159,7 +159,7 @@ class Downloader (
         }
 
         val downloadedSize = withContext(Dispatchers.IO) { Files.size(destinationFilePath) }
-        assert(totalFileSize.toLong() == downloadedSize) {
+        assert(totalFileSize == downloadedSize) {
             "Downloaded file size mismatch: expected $totalFileSize bytes, but got $downloadedSize bytes"
         }
     }
@@ -173,12 +173,12 @@ class Downloader (
      * @throws ChunkSizeMismatchException if downloaded chunk size doesn't match expected size
      * @throws ChunkWrongStatusCodeException if the HTTP response status code is not PartialContent
      */
-    suspend fun downloadChunk(fileUrl: String, filePath: Path, range: Pair<Int, Int>) {
+    suspend fun downloadChunk(fileUrl: String, filePath: Path, range: Pair<Long, Long>) {
         val expectedChunkSize = range.second - range.first
         val chunkData = FileChunk.fetchChunk(httpClient, fileUrl, range.first, range.second)
 
-        if (chunkData.rawBytes.size != expectedChunkSize) {
-            throw ChunkSizeMismatchException(chunkData.rawBytes.size, expectedChunkSize, range)
+        if (chunkData.rawBytes.size.toLong() != expectedChunkSize) {
+            throw ChunkSizeMismatchException(chunkData.rawBytes.size.toLong(), expectedChunkSize, range)
         }
 
         logger.debug { "Downloaded chunk ${range.first}-${range.second} with size ${chunkData.rawBytes.size}" }
