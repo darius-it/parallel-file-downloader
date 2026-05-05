@@ -1,13 +1,13 @@
-Improvement ideas (some from prev interview):
+TODOs:
 - ~~use dependency injection for Ktor client/dependencies~~
-- stream files to disk!! -> proto done, add in-mem fallback and adjust tests!
-- probably better to switch to long and check if there's any parts that won't play nicely with very large files
-- check if any of the functions can be cleaned up/refactored
+- ~~write files directly to disk~~
+- ~~check if any of the functions can be cleaned up/refactored~~
+- ~~use custom exceptions for better error handling~~
+- check for any weird/unnecessary type conversions between number formats
+- implement simple retry logic, only retry when hitting certain custom exceptions
 - add more tests, especially for more complicated failure cases (use mock engines)
-- use named exceptions for improved error handling, throw them from our downloader method or something like that; for example for network retries, individual chunks failing, think of some cases
+- adjust tests for refactored structure, should be easier to test because of more isolated logic
 - generate some checksum files for large test files, add optional addition to compare to those if they exist
-- maybe do benchmarking, test various file sizes -> https://openjdk.org/projects/code-tools/jmh/
-
 
 Technical notes:
 Improvements:
