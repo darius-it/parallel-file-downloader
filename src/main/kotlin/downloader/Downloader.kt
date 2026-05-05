@@ -9,12 +9,13 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
-import me.dariusit.downloader.FileProperties.Companion.fetchFileProperties
-import java.io.File
-import java.nio.ByteBuffer
-import java.nio.channels.FileChannel
-import java.nio.file.StandardOpenOption
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.Paths
 import kotlin.math.ceil
+
+class ChunkSizeMismatchException(downloadedSize: Int, expectedSize: Int, range: Pair<Int, Int>) :
+    Exception("Size of downloaded chunk ($downloadedSize) does not match expected chunk size ($expectedSize) for range (${range.first} - ${range.second})")
 
 class Downloader (
     serverUrl: String = "http://localhost:8080",
@@ -31,7 +32,6 @@ class Downloader (
      * @param fileName the name of the file to download (e.g. "mastodon.svg")
      * @param serverUrl the base URL of the server to download from (default: "http://localhost:8080")
      * @param parallelDownloadChunks the number of chunks to download in parallel (default: 2)
-     * @param saveToDisk whether to save the downloaded file to disk (default: true)
      *
      * @return the raw byte array of the downloaded file
      */
@@ -39,7 +39,7 @@ class Downloader (
         fileName: String,
         serverUrl: String = defaultServerUrl,
         parallelDownloadChunks: Int = defaultParallelDownloadChunks,
-        saveToDisk: Boolean = true
+        // TODO: consider if it makes sense to add configurable file info network retries and chunk fetch retries
     ) {
         require(parallelDownloadChunks > 0) {
             "Invalid number of parallel download chunks: $parallelDownloadChunks. Must be greater than 0."
@@ -49,7 +49,7 @@ class Downloader (
         require(serverUrl.isNotBlank()) { "Server URL cannot be blank!" }
 
         val fileUrl = "$serverUrl/$fileName"
-        val fileProperties = fetchFileProperties(httpClient, fileUrl)
+        val fileProperties = FileProperties.fetchFileProperties(httpClient, fileUrl)
         val contentLength = fileProperties?.contentLength ?: 0
 
         require(contentLength > 0) {
@@ -59,15 +59,13 @@ class Downloader (
         if (parallelDownloadChunks == 1) {
             logger.debug { "Downloading file in a single chunk since parallelDownloadChunks is set to 1..." }
             val requestData = httpClient.get(fileUrl)
-            writeChunk(File(fileName), 0, requestData.readRawBytes())
+            FileChunk.writeChunk(Paths.get(fileName), 0, requestData.readRawBytes())
         } else {
             val downloadChunkSize = (contentLength.toDouble() / parallelDownloadChunks).let { ceil(it).toInt() }
             logger.debug { "Downloading $parallelDownloadChunks chunks in parallel with size $downloadChunkSize..." }
 
             downloadInParallel(fileUrl, contentLength, downloadChunkSize)
         }
-
-        // TODO: add back in-memory fallback if downloaded file doesn't exceed ByteArray size limit
     }
 
     /**
@@ -93,44 +91,45 @@ class Downloader (
         return chunkRanges
     }
 
-    /*
-        Given a file object, opens a FileChannel to stream one individual chunk of data to disk, starting at a specified position/offset.
-     */
-    fun writeChunk(file: File, position: Int, data: ByteArray) {
-        FileChannel.open(file.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { channel ->
-            val buffer = ByteBuffer.wrap(data)
-            channel.write(buffer, position.toLong())
+    suspend fun downloadChunk(fileUrl: String, filePath: Path, range: Pair<Int, Int>) {
+        val chunkData = FileChunk.fetchChunk(httpClient, fileUrl, range.first, range.second)
+        val expectedChunkSize = range.second - range.first
+
+        // TODO: if fetchChunk throws exception, retry once or abort -> add some test for retry using mock engine
+
+        if (chunkData.rawBytes.size != expectedChunkSize) {
+            throw ChunkSizeMismatchException(chunkData.rawBytes.size, expectedChunkSize, range)
+        }
+
+        logger.debug { "Downloaded chunk ${range.first}-${range.second} with size ${chunkData.rawBytes.size}" }
+
+        withContext(Dispatchers.IO) {
+            FileChunk.writeChunk(filePath, range.first, chunkData.rawBytes)
         }
     }
 
     /**
-    Download the file in parallel by fetching multiple chunks concurrently using coroutines.
-    Each chunk is fetched using a Range request, and all chunks are combined into a single byte array at the end.
+        Download the file in parallel by fetching multiple chunks concurrently using coroutines.
+        Each chunk is fetched using a Range request, and all chunks are combined into a single byte array at the end.
      */
-    suspend fun downloadInParallel(fileName: String, totalSize: Int, chunkSize: Int) {
-        val chunkRanges = calculateChunkRanges(totalSize, chunkSize)
-        val file = File(fileName.split("/").last())
+    suspend fun downloadInParallel(fileUrl: String, totalSize: Int, chunkSize: Int): Path {
+        val chunkRanges = calculateChunkRanges(totalSize, chunkSize) // TODO: check if chunk size exceeds ByteArray size limit, throw ChunkTooLargeException
+        val filePath = Paths.get(fileUrl.split("/").last()) // TODO: make sure file exists, create it if not
 
         // start download of chunks in parallel (coroutines), wait for all to finish
-        val chunks = coroutineScope {
+        coroutineScope {
             chunkRanges.map { range ->
                 async(Dispatchers.Default) {
-                    val chunkData = FileChunk.fetchChunk(httpClient, fileName, range.first, range.second)
-                    val expectedChunkSize = range.second - range.first
-
-                    if (chunkData.rawBytes.size != expectedChunkSize) {
-                        throw Exception("Chunk size mismatch! Expected $expectedChunkSize bytes, but got ${chunkData.rawBytes.size} bytes for range ${range.first}-${range.second}")
-                    }
-
-                    logger.debug { "Downloaded chunk ${range.first}-${range.second} with size ${chunkData.rawBytes.size}" }
-
-                    withContext(Dispatchers.IO) {
-                        writeChunk(file, range.first, chunkData.rawBytes)
-                    }
+                    downloadChunk(fileUrl, filePath, range)
                 }
             }.awaitAll()
         }
 
-        // TODO: cleanup, add in-memory fallback (maybe list of ByteArrays or hard cap that max in mem size is one size of ByteArray)
+        val downloadedSize = withContext(Dispatchers.IO) { Files.size(filePath) }
+        assert(totalSize.toLong() == downloadedSize) {
+            "Downloaded file size mismatch: expected $totalSize bytes, but got $downloadedSize bytes"
+        }
+
+        return filePath
     }
 }
