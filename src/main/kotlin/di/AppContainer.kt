@@ -17,6 +17,6 @@ class AppContainer (ktorHttpClientEngineFactory: HttpClientEngineFactory<HttpCli
     }
 
     fun getDownloaderInstance(serverUrl: String, parallelDownloadChunks: Int): Downloader {
-        return Downloader(serverUrl, parallelDownloadChunks, httpClient, logger)
+        return Downloader(serverUrl, parallelDownloadChunks, httpClient=httpClient, logger=logger)
     }
 }
