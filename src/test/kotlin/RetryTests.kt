@@ -16,7 +16,7 @@ class RetryTests {
             downloader.tryCatchWithRetry(maxRetries = 2) {
                 attempts++
                 if (attempts < 3) {
-                    throw ChunkSizeMismatchException(attempts, 2, 0 to 1)
+                        throw ChunkSizeMismatchException(attempts.toLong(), 2L, 0L to 1L)
                 }
             }
 

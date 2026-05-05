@@ -13,7 +13,7 @@ class ParallelDownloadTests {
     @Test
     fun testDownloadInParallelStreamsChunksToDisk() {
         val destination = Files.createTempFile("downloader-parallel", ".bin")
-        Files.write(destination, ByteArray(TestFixtures.testFileSize))
+        Files.write(destination, ByteArray(TestFixtures.testFileSize.toInt()))
 
         try {
             runBlocking {

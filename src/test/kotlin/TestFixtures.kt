@@ -4,8 +4,8 @@ import kotlin.random.Random
 import me.dariusit.downloader.Downloader
 
 object TestFixtures {
-    val testFileSize = 1024
-    val testFileData: ByteArray = Random.nextBytes(testFileSize)
+    const val testFileSize = 1024L
+    val testFileData: ByteArray = Random.nextBytes(testFileSize.toInt())
     val serverUrl = "https://mockserver"
     val fileName = "testfile"
 

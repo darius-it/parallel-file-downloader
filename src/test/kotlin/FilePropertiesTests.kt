@@ -18,6 +18,19 @@ class FilePropertiesTests {
     }
 
     @Test
+    fun testGetFilePropertiesHandlesLargeContentLengthHeaders() {
+        val largeSize = 2_851_612_672L
+        val largeHttpClient = HttpClient(WebServerMock.getMockEngine(largeSize, ByteArray(0)))
+        val largeDownloader = TestFixtures.makeDownloader(largeHttpClient)
+
+        runBlocking {
+            val properties = largeDownloader.getFileProperties(TestFixtures.fileName, TestFixtures.serverUrl)
+
+            assertEquals(largeSize, properties.contentLength)
+        }
+    }
+
+    @Test
     fun testGetFilePropertiesRejectsInvalidChunkCount() {
         assertThrows(IllegalArgumentException::class.java) {
             runBlocking {

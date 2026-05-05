@@ -8,7 +8,7 @@ import kotlinx.coroutines.delay
 import kotlin.text.removePrefix
 
 object WebServerMock {
-    fun getMockEngine(testFileSize: Int, testFileData: ByteArray): MockEngine {
+    fun getMockEngine(testFileSize: Long, testFileData: ByteArray): MockEngine {
         return MockEngine { request ->
             val path = request.url.encodedPath
             if (path == "/") return@MockEngine respond("Not Found", status = HttpStatusCode.NotFound)
@@ -28,14 +28,14 @@ object WebServerMock {
                 if (rangeHeader != null) {
                     // Parse Range: bytes=start-end
                     val range = rangeHeader.removePrefix("bytes=").split("-")
-                    val start = range[0].toInt()
+                    val start = range[0].toLong()
                     // If end is missing or empty, it means "to end", but let's assume it's always present as per our client
-                    val end = if (range.size > 1 && range[1].isNotEmpty()) range[1].toInt() else testFileSize - 1
+                    val end = if (range.size > 1 && range[1].isNotEmpty()) range[1].toLong() else testFileSize - 1
 
                     if (start >= testFileSize || end >= testFileSize || start > end) {
                         respond("Range Not Satisfiable", status = HttpStatusCode.RequestedRangeNotSatisfiable)
                     } else {
-                        val chunk = testFileData.sliceArray(start..end)
+                        val chunk = testFileData.sliceArray(start.toInt()..end.toInt())
                         respond(
                             content = chunk,
                             status = HttpStatusCode.PartialContent,
@@ -77,7 +77,7 @@ object WebServerMock {
         }
     }
 
-    fun getDelayedChunkMockEngine(testFileSize: Int, testFileData: ByteArray): MockEngine {
+    fun getDelayedChunkMockEngine(testFileSize: Long, testFileData: ByteArray): MockEngine {
         return MockEngine { request ->
             if (request.method == HttpMethod.Head) {
                 return@MockEngine respond(
@@ -97,9 +97,9 @@ object WebServerMock {
 
             if (rangeHeader != null) {
                 val range = rangeHeader.removePrefix("bytes=").split("-")
-                val start = range[0].toInt()
-                val end = range[1].toInt()
-                val chunk = testFileData.sliceArray(start..end)
+                val start = range[0].toLong()
+                val end = range[1].toLong()
+                val chunk = testFileData.sliceArray(start.toInt()..end.toInt())
 
                 respond(
                     content = chunk,
@@ -120,7 +120,7 @@ object WebServerMock {
      * This avoids allocating the entire file in memory; the engine returns deterministic bytes for each
      * requested range (byte value = position % 256).
      */
-    fun getLargeMockEngine(totalSize: Int): MockEngine {
+    fun getLargeMockEngine(totalSize: Long): MockEngine {
         return MockEngine { request ->
             if (request.method == HttpMethod.Head) {
                 return@MockEngine respond(
@@ -137,21 +137,26 @@ object WebServerMock {
             if (rangeHeader != null) {
                 val range = rangeHeader.removePrefix("bytes=").split("-")
                 val start = range[0].toLong()
-                val end = if (range.size > 1 && range[1].isNotEmpty()) range[1].toLong() else (totalSize - 1).toLong()
+                val end = if (range.size > 1 && range[1].isNotEmpty()) range[1].toLong() else totalSize - 1
 
                 if (start >= totalSize || end >= totalSize || start > end) {
                     respond("Range Not Satisfiable", status = HttpStatusCode.RequestedRangeNotSatisfiable)
                 } else {
-                    val size = (end - start + 1).toInt()
-                    val chunk = ByteArray(size) { idx -> ((start + idx) % 256).toByte() }
-                    respond(
-                        content = chunk,
-                        status = HttpStatusCode.PartialContent,
-                        headers = headersOf(
-                            HttpHeaders.ContentLength to listOf(chunk.size.toString()),
-                            HttpHeaders.ContentRange to listOf("bytes $start-$end/$totalSize")
+                    val sizeLong = end - start + 1
+                    if (sizeLong > Int.MAX_VALUE.toLong()) {
+                        respond("Requested Range Too Large", status = HttpStatusCode.RequestedRangeNotSatisfiable)
+                    } else {
+                        val size = sizeLong.toInt()
+                        val chunk = ByteArray(size) { idx -> ((start + idx) % 256).toByte() }
+                        respond(
+                            content = chunk,
+                            status = HttpStatusCode.PartialContent,
+                            headers = headersOf(
+                                HttpHeaders.ContentLength to listOf(chunk.size.toString()),
+                                HttpHeaders.ContentRange to listOf("bytes $start-$end/$totalSize")
+                            )
                         )
-                    )
+                    }
                 }
             } else {
                 // Full download - generate small sample rather than entire huge file
