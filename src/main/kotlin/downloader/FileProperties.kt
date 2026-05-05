@@ -11,10 +11,13 @@ data class FileProperties (val contentLength: Int, val acceptRanges: String? = n
         suspend fun fetchFileProperties(httpClient: HttpClient, fileName: String): FileProperties? {
             val response = httpClient.head(fileName)
 
+            // TODO: add custom exception
+
             if (response.status != io.ktor.http.HttpStatusCode.OK) {
                 println("Something went wrong when getting the HEAD request! Status code: ${response.status}")
 
                 // potentially do some better error handling here
+                // TODO: add custom exception here, something like UnexpectedStatusCodeException
                 return null
             }
 
