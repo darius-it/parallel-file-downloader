@@ -127,9 +127,9 @@ class Downloader (
         coroutineScope {
             chunkRanges.map { range ->
                 async(Dispatchers.Default) {
-                    downloadChunk(downloadUrl, destinationFilePath, range)
-
-                    // TODO: add retry logic if we get ChunkSizeMismatchException or ChunkWrongStatusCodeException, don't retry on other network failures since Ktor can handle that via retry plugin
+                    tryCatchWithRetry {
+                        downloadChunk(downloadUrl, destinationFilePath, range)
+                    }
                 }
             }.awaitAll()
         }
@@ -155,6 +155,38 @@ class Downloader (
 
         withContext(Dispatchers.IO) {
             FileChunk.writeChunk(filePath, range.first, chunkData.rawBytes)
+        }
+    }
+
+    /**
+     * Retry `func` up to `maxRetries` times only when the thrown exception is one of [retryOn].
+     * Any other exception is rethrown immediately.
+     *
+     * @param maxRetries number of retries in addition to the initial attempt (>= 0)
+     * @param retryOn array of Exception classes that are considered retryable.
+     */
+    suspend fun tryCatchWithRetry(
+        maxRetries: Int = chunkFailureRetries,
+        retryOn: Array<Class<out Exception>> = arrayOf(ChunkSizeMismatchException::class.java,
+            ChunkWrongStatusCodeException::class.java),
+        func: suspend () -> Unit
+    ) {
+        require(maxRetries >= 0) { "maxRetries must be >= 0" }
+
+        var retries = 0
+
+        while (true) {
+            try {
+                func()
+                return
+            } catch (e: Exception) {
+                val isRetryable = retryOn.any { it.isInstance(e) }
+                if (!isRetryable) throw e // throw immediately if we hit exception other than accepted ones
+
+                if (retries >= maxRetries) throw e
+
+                retries++
+            }
         }
     }
 }
