@@ -5,6 +5,10 @@ import io.ktor.client.request.get
 import io.ktor.client.request.headers
 import io.ktor.client.statement.readRawBytes
 import io.ktor.http.HttpStatusCode
+import java.nio.ByteBuffer
+import java.nio.channels.FileChannel
+import java.nio.file.Path
+import java.nio.file.StandardOpenOption
 
 data class FileChunk (
     val start: Int,
@@ -45,12 +49,22 @@ data class FileChunk (
 
             if (response.status != HttpStatusCode.PartialContent) {
                 println("Something went wrong when getting the chunk! Status code: ${response.status}")
-                throw Exception("Failed to fetch file chunk! Status code: ${response.status}")
+                throw Exception("Failed to fetch file chunk! Status code: ${response.status}") // TODO: create custom exception here
             }
 
             val rawBytes = response.readRawBytes()
 
             return FileChunk(start, end, rawBytes)
+        }
+
+        /**
+            Given a Path object, opens a FileChannel to write one individual chunk of data to disk, starting at a specified position/offset.
+        */
+        fun writeChunk(filePath: Path, position: Int, data: ByteArray) {
+            FileChannel.open(filePath, StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { channel ->
+                val buffer = ByteBuffer.wrap(data)
+                channel.write(buffer, position.toLong())
+            }
         }
     }
 }
