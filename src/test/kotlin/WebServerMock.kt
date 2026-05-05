@@ -114,4 +114,49 @@ object WebServerMock {
             }
         }
     }
+
+    /**
+     * Create a mock engine for very large files where the content is generated on-the-fly per Range request.
+     * This avoids allocating the entire file in memory; the engine returns deterministic bytes for each
+     * requested range (byte value = position % 256).
+     */
+    fun getLargeMockEngine(totalSize: Int): MockEngine {
+        return MockEngine { request ->
+            if (request.method == HttpMethod.Head) {
+                return@MockEngine respond(
+                    content = ByteArray(0),
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(
+                        HttpHeaders.ContentLength to listOf(totalSize.toString()),
+                        HttpHeaders.AcceptRanges to listOf("bytes")
+                    )
+                )
+            }
+
+            val rangeHeader = request.headers[HttpHeaders.Range]
+            if (rangeHeader != null) {
+                val range = rangeHeader.removePrefix("bytes=").split("-")
+                val start = range[0].toLong()
+                val end = if (range.size > 1 && range[1].isNotEmpty()) range[1].toLong() else (totalSize - 1).toLong()
+
+                if (start >= totalSize || end >= totalSize || start > end) {
+                    respond("Range Not Satisfiable", status = HttpStatusCode.RequestedRangeNotSatisfiable)
+                } else {
+                    val size = (end - start + 1).toInt()
+                    val chunk = ByteArray(size) { idx -> ((start + idx) % 256).toByte() }
+                    respond(
+                        content = chunk,
+                        status = HttpStatusCode.PartialContent,
+                        headers = headersOf(
+                            HttpHeaders.ContentLength to listOf(chunk.size.toString()),
+                            HttpHeaders.ContentRange to listOf("bytes $start-$end/$totalSize")
+                        )
+                    )
+                }
+            } else {
+                // Full download - generate small sample rather than entire huge file
+                respond(ByteArray(0), HttpStatusCode.OK)
+            }
+        }
+    }
 }
