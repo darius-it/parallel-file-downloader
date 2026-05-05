@@ -2,8 +2,6 @@ package me.dariusit.downloader
 
 import io.github.oshai.kotlinlogging.KLogger
 import io.ktor.client.*
-import io.ktor.client.request.*
-import io.ktor.client.statement.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -12,10 +10,11 @@ import kotlinx.coroutines.withContext
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
-import kotlin.math.ceil
 
 class ChunkSizeMismatchException(downloadedSize: Int, expectedSize: Int, range: Pair<Int, Int>) :
     Exception("Size of downloaded chunk ($downloadedSize) does not match expected chunk size ($expectedSize) for range (${range.first} - ${range.second})")
+
+class ChunkTooLargeException: Exception("Chunk size exceeds max size of Java (Byte)Array! Please increase the number of parallelDownloadChunks.")
 
 class Downloader (
     serverUrl: String = "http://localhost:8080",
@@ -41,6 +40,24 @@ class Downloader (
         parallelDownloadChunks: Int = defaultParallelDownloadChunks,
         // TODO: consider if it makes sense to add configurable file info network retries and chunk fetch retries
     ) {
+        logger.debug { "Fetching file properties for $fileName..." }
+        val fileProperties = getFileProperties(fileName, serverUrl, parallelDownloadChunks)
+        val chunkRanges = calculateChunkRanges(fileProperties.contentLength, parallelDownloadChunks)
+
+        logger.debug { "Downloading ${chunkRanges.size} chunks in parallel..." }
+        val destinationFilePath = getDestinationFilePath(fileName)
+        val downloadUrl = "$serverUrl/$fileName"
+        downloadInParallel(downloadUrl, destinationFilePath, chunkRanges, fileProperties.contentLength)
+    }
+
+    /**
+     * Stage 1 of download process: use HEAD request to get information about file to download (total size, does it accept byte ranges, etc.)
+     */
+    suspend fun getFileProperties(
+        fileName: String,
+        serverUrl: String = defaultServerUrl,
+        parallelDownloadChunks: Int = defaultParallelDownloadChunks
+    ): FileProperties {
         require(parallelDownloadChunks > 0) {
             "Invalid number of parallel download chunks: $parallelDownloadChunks. Must be greater than 0."
         }
@@ -50,22 +67,12 @@ class Downloader (
 
         val fileUrl = "$serverUrl/$fileName"
         val fileProperties = FileProperties.fetchFileProperties(httpClient, fileUrl)
-        val contentLength = fileProperties?.contentLength ?: 0
 
-        require(contentLength > 0) {
+        require(fileProperties.contentLength > 0) {
             "File is empty or content length could not be determined, aborting download."
         }
 
-        if (parallelDownloadChunks == 1) {
-            logger.debug { "Downloading file in a single chunk since parallelDownloadChunks is set to 1..." }
-            val requestData = httpClient.get(fileUrl)
-            FileChunk.writeChunk(Paths.get(fileName), 0, requestData.readRawBytes())
-        } else {
-            val downloadChunkSize = (contentLength.toDouble() / parallelDownloadChunks).let { ceil(it).toInt() }
-            logger.debug { "Downloading $parallelDownloadChunks chunks in parallel with size $downloadChunkSize..." }
-
-            downloadInParallel(fileUrl, contentLength, downloadChunkSize)
-        }
+        return fileProperties
     }
 
     /**
@@ -73,16 +80,25 @@ class Downloader (
      *
      * @return Pairs of (start, end) byte indices, e.g. (0, 500), (500, 1000), etc.
      */
-    fun calculateChunkRanges(totalSize: Int, chunkSize: Int): List<Pair<Int, Int>> {
+    fun calculateChunkRanges(totalSize: Int, parallelDownloadChunks: Int): List<Pair<Int, Int>> {
         require(totalSize > 0) { "Total file size must be greater than 0!" }
-        require(chunkSize > 0) { "Chunk size must be greater than 0!" }
+        require(parallelDownloadChunks > 0) { "parallelDownloadChunks must be greater than 0!" }
+
+        val chunkCount = minOf(totalSize, parallelDownloadChunks)
+        val baseChunkSize = totalSize / chunkCount
+        val remainder = totalSize % chunkCount
+
+        if (baseChunkSize >= Int.MAX_VALUE) {
+            throw ChunkTooLargeException()
+        }
 
         val chunkRanges = mutableListOf<Pair<Int, Int>>()
         var currentStart = 0
 
-        while (currentStart < totalSize) {
-            val currentEnd = minOf(currentStart + chunkSize, totalSize)
-            chunkRanges.add(Pair(currentStart, currentEnd))
+        repeat(chunkCount) { index ->
+            val currentChunkSize = baseChunkSize + if (index < remainder) 1 else 0
+            val currentEnd = currentStart + currentChunkSize
+            chunkRanges.add(currentStart to currentEnd)
             currentStart = currentEnd
         }
 
@@ -91,6 +107,42 @@ class Downloader (
         return chunkRanges
     }
 
+    fun getDestinationFilePath(fileName: String): Path {
+        val filePath = Paths.get(fileName)
+        return if (Files.notExists(filePath)) Files.createFile(filePath) else filePath
+    }
+
+    /**
+     *  Stage 2 of download process: go over each numerical chunk range, download it and save it to disk.
+        Multiple chunks are fetched concurrently using coroutines.
+        Each chunk is fetched using a Range request, and all chunks are combined into a single byte array at the end.
+     */
+    suspend fun downloadInParallel(
+        downloadUrl: String,
+        destinationFilePath: Path,
+        chunkRanges: List<Pair<Int, Int>>,
+        totalFileSize: Int
+    ) {
+        // start download of chunks in parallel (coroutines), wait for all to finish
+        coroutineScope {
+            chunkRanges.map { range ->
+                async(Dispatchers.Default) {
+                    downloadChunk(downloadUrl, destinationFilePath, range)
+
+                    // TODO: add retry logic if we get ChunkSizeMismatchException or ChunkWrongStatusCodeException, don't retry on other network failures since Ktor can handle that via retry plugin
+                }
+            }.awaitAll()
+        }
+
+        val downloadedSize = withContext(Dispatchers.IO) { Files.size(destinationFilePath) }
+        assert(totalFileSize.toLong() == downloadedSize) {
+            "Downloaded file size mismatch: expected $totalFileSize bytes, but got $downloadedSize bytes"
+        }
+    }
+
+    /**
+     * Helper for downloadInParallel, downloads the contents of one singular chunk and saves them into our file on disk
+     */
     suspend fun downloadChunk(fileUrl: String, filePath: Path, range: Pair<Int, Int>) {
         val expectedChunkSize = range.second - range.first
         val chunkData = FileChunk.fetchChunk(httpClient, fileUrl, range.first, range.second)
@@ -104,32 +156,5 @@ class Downloader (
         withContext(Dispatchers.IO) {
             FileChunk.writeChunk(filePath, range.first, chunkData.rawBytes)
         }
-    }
-
-    /**
-        Download the file in parallel by fetching multiple chunks concurrently using coroutines.
-        Each chunk is fetched using a Range request, and all chunks are combined into a single byte array at the end.
-     */
-    suspend fun downloadInParallel(fileUrl: String, totalSize: Int, chunkSize: Int): Path {
-        val chunkRanges = calculateChunkRanges(totalSize, chunkSize) // TODO: check if chunk size exceeds ByteArray size limit, throw ChunkTooLargeException -> write test for this too
-        val filePath = Paths.get(fileUrl.split("/").last()) // TODO: make sure file exists, create it if not
-
-        // start download of chunks in parallel (coroutines), wait for all to finish
-        coroutineScope {
-            chunkRanges.map { range ->
-                async(Dispatchers.Default) {
-                    downloadChunk(fileUrl, filePath, range)
-
-                    // TODO: add retry logic if we get ChunkSizeMismatchException or ChunkWrongStatusCodeException, don't retry on other network failures since Ktor can handle that via retry plugin
-                }
-            }.awaitAll()
-        }
-
-        val downloadedSize = withContext(Dispatchers.IO) { Files.size(filePath) }
-        assert(totalSize.toLong() == downloadedSize) {
-            "Downloaded file size mismatch: expected $totalSize bytes, but got $downloadedSize bytes"
-        }
-
-        return filePath
     }
 }
