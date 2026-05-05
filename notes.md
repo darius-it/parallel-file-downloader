@@ -25,3 +25,4 @@ Further improvements/changes that could be done:
 - In prod, use Koin for DI since it's still fairly simple and handles many common cases nicely, also plays well with Compose apps
 - For DI, instead of requiring specifically a Koin HTTP client, introduce some more general interface with a set of required methods, we could technically use other clients and write an adapter etc.
 - Instead of fully going for saving chunks directly to disk, some in-memory fallback could be added for smaller files; maybe some memory-mapped usage of the FileChannel
+- Retry some network failures via Ktor client
