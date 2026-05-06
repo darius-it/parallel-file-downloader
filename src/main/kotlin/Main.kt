@@ -6,5 +6,5 @@ suspend fun main() {
     val container = AppContainer()
     val downloader = container.getDownloaderInstance()
 
-    downloader.downloadFile("mastodon.png")
+    downloader.downloadFile("f44.iso", parallelDownloadChunks = 12, verifyChecksumFile = true)
 }
