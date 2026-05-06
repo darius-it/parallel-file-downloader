@@ -48,16 +48,16 @@ val customDownloader = Downloader(
 ## Improvements compared to previous implementation
 
 - Implemented a streaming approach for chunk downloads. Streaming directly from Ktor's ByteReadChannel into the destination file (via FileChannel and a small direct buffer), avoiding large in‑memory byte arrays and enabling downloads of larger files.
-- Used Dependency Injection in Downloader for looser coupling with dependencies. For simplicity purposes a lightweight manual approach was used (see `AppContainer`), but it still offers the same advantage that our app has one instance of a Ktor HTTP client and a logger we can inject into any downloader object, but if we want we can still configure a downloader manually with different dependencies passed.
-- Refactored functions into smaller logical units. In the old downloader there were only a few methods with more logic inside them. While the code itself was clean and the methods were not excessively big, some refactoring was done to improve the logical flow of the implementation and provide smaller, more isolated units that can be tested better.
+- Used Dependency Injection in Downloader for looser coupling with dependencies. For simplicity purposes a lightweight manual approach was used (see `AppContainer`). It still offers the same advantage that our app has one instance of a Ktor HTTP client and a logger we can inject into any downloader object. Nevertheless, it's still possible to configure a downloader manually with different dependencies passed.
+- Refactored functions into smaller logical units. In the old downloader there were only a few methods with more logic inside them. While the code itself was clean and the methods were not excessively big, refactoring was done to improve the logical flow of the implementation and provide smaller, more isolated units that can be tested better.
 - Added custom exceptions to differentiate between different failure states of the download logic. 
 - Created a simple wrapper method to retry a code snippet if we hit certain exceptions that we deem "retryable". Depending on the severity of the error, this could mean retrying a chunk or retrying the entire download process (here only chunk downloads have the retry implemented).
 - Verifying file integrity after downloads using remote checksum file (if available), similar to how Linux ISO downloads provide a checksum file to compare with.
 
 ## Further potential extensions
 
-- Instead of requiring particular instances of a Ktor HTTP Client or a KotlinLogging logger object, add some general interfaces for the required methods to allow using different libraries for our downloader dependencies. (This could theoretically be circumvented by writing adapters for those libraries, but a more general approach would be nicer.)
-- Test coverage could probably be improved a little, now that the main downloader methods are smaller isolated units we could test a few more cases.
+- Instead of requiring particular instances of a Ktor HTTP Client or a KotlinLogging logger object, add some general interfaces for the required methods to allow using different libraries for our downloader dependencies. (This could theoretically be circumvented by writing adapters for those libraries, but a more general approach would be even nicer.)
+- With the new implementation (smaller, more isolated methods) it possible to further extend the test coverage.
 - Some benchmarking could be done to see if there's any speed bottlenecks. Aspects like memory usage could also be inspected, depending on what our requirements are.
 - In a production setting (especially in something like a Compose app), it would most likely make more sense to use Koin for Dependency Injection because it provides good abstractions for DI that integrate well with other libraries (e.g. Android ViewModels).
 - Implement retry logic for network-related issues using Ktor's retry logic and potentially catch more severe failures to optionally retry the entire download process once.
