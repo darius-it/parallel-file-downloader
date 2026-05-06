@@ -38,7 +38,7 @@ Gradle, use the following command in the terminal:
    and how the Range header works. For this I used Bruno (similar to Postman) to test different HTTP requests.
 
 2. Then, I quickly wrote down the abstract flow of how the downloader should work. I've illustrated this with a simple
-   schematic: <br> ![download process overview](docs/download_process_overview.svg)
+   schematic: <br> ![download process overview](download_process_overview.svg)
 
 3. With this flow in mind, I jumped into the initial prototype. Since I've previously worked with Ktor in a Compose
    Multiplatform project, I chose that as a technology that works well as a HTTP client and is pretty powerful and

@@ -7,7 +7,10 @@ This implementation builds on a previous submission, but has been significantly 
 discussed in the last interview.
 
 (The old README with some more details on the initial implementation can be found
-in [the README_old.md](README_old.md).)
+in [the README_old.md](docs/README_old.md).)
+
+General logic of the downloader:
+![download process overview](docs/download_process_overview.svg)
 
 ## How to use
 
@@ -21,7 +24,7 @@ HTTP Client and logger) to a Downloader object. You can obtain and object and us
 
 ```kotlin
 val container = AppContainer()
-val downloader = container.getDownloaderInstance()
+val downloader = container.getDownloaderInstance(/* optional params for serverUrl and parallelDownloadChunks*/)
 
 downloader.downloadFile(
     "someFileName.png", // file name to download
