@@ -2,13 +2,19 @@ package me.dariusit.downloader
 
 import io.github.oshai.kotlinlogging.KLogger
 import io.ktor.client.*
+import io.ktor.client.request.get
+import io.ktor.client.statement.bodyAsText
 import kotlinx.coroutines.*
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.security.MessageDigest
 
 class ChunkTooLargeException :
     Exception("Chunk size exceeds max size of Java (Byte)Array! Please increase the number of parallelDownloadChunks.")
+
+class ChecksumNotMatchingException(localChecksum: String, remoteChecksum: String) :
+        Exception("The checksum of your downloaded file does not match the checksum from the remote checksum file. Local: $localChecksum, Remote: $remoteChecksum")
 
 class Downloader(
     private val defaultServerUrl: String = "http://localhost:8080",
@@ -32,6 +38,7 @@ class Downloader(
         fileName: String,
         serverUrl: String = defaultServerUrl,
         parallelDownloadChunks: Int = parallelChunkAmount,
+        verifyChecksumFile: Boolean = false
     ) {
         logger.debug { "Fetching file properties for $fileName..." }
         val fileProperties = getFileProperties(fileName, serverUrl, parallelDownloadChunks)
@@ -41,6 +48,10 @@ class Downloader(
         val destinationFilePath = getDestinationFilePath(fileName)
         val downloadUrl = buildUrl(serverUrl, fileName)
         downloadInParallel(downloadUrl, destinationFilePath, chunkRanges, fileProperties.contentLength)
+
+        if (verifyChecksumFile) {
+            verifyFileChecksum(destinationFilePath, serverUrl)
+        }
     }
 
     /**
@@ -163,6 +174,43 @@ class Downloader(
      */
     suspend fun downloadChunk(fileUrl: String, filePath: Path, range: Pair<Long, Long>) {
         FileChunk.downloadChunk(httpClient, logger, fileUrl, filePath, range)
+    }
+
+    suspend fun verifyFileChecksum(destinationFilePath: Path, serverUrl: String = defaultServerUrl) {
+        val checksumFileName = destinationFilePath.fileName.toString() + ".sha256"
+        val checksumUrl = buildUrl(serverUrl, checksumFileName)
+
+        val remoteChecksumText = httpClient.get(checksumUrl).bodyAsText()
+
+        val remoteChecksum = remoteChecksumText
+            .lineSequence()
+            .firstOrNull()
+            ?.trim()
+            ?.split(Regex("\\s+"))
+            ?.firstOrNull()
+            ?.lowercase()
+
+        val md = MessageDigest.getInstance("SHA-256")
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+
+        withContext(Dispatchers.IO) {
+            Files.newInputStream(destinationFilePath).use { input ->
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    md.update(buffer, 0, read)
+                }
+            }
+        }
+
+        val localChecksum = md.digest().joinToString("") { "%02x".format(it) }
+        val matches = remoteChecksum.equals(localChecksum, ignoreCase = true)
+
+        if (!matches) {
+            throw ChecksumNotMatchingException(localChecksum, remoteChecksum ?: "")
+        }
+
+        logger.debug { "Checksum of downloaded file matches its remote checksum file." }
     }
 
     /**
