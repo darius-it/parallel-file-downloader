@@ -1,14 +1,10 @@
 TODOs:
 
-- ~~use dependency injection for Ktor client/dependencies~~
+
 - ~~write files directly to disk~~
-- ~~check if any of the functions can be cleaned up/refactored~~
-- ~~use custom exceptions for better error handling~~
-- ~~implement simple retry logic, only retry when hitting certain custom exceptions~~
-- ~~adjust tests for refactored structure, should be easier to test because of more isolated logic~~
 - ~~try to further improve streaming logic for very big files (used prepareGet and other ideas from ktor docs in
   combination with intitial FileChanel approach)~~
-- ~~group individual test files into test suite~~, make sure it works fine in CI
+
 - add function to match checksum file with final content if it exists, add test
 
 Technical notes:

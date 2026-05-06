@@ -44,4 +44,11 @@ val customDownloader = Downloader(
 
 ## Improvements compared to previous implementation
 
+- Used Dependency Injection in Downloader for looser coupling with dependencies. For simplicity purposes a lightweight manual approach was used (see `AppContainer`), but it still offers the same advantage that our app has one instance of a Ktor HTTP client and a logger we can inject into any downloader object, but if we want we can still configure a downloader manually with different dependencies passed.
+- Refactored functions into smaller logical units. In the old downloader there were only a few methods with more logic inside them. While the code itself was clean and the methods were not excessively big, some refactoring was done to improve the logical flow of the implementation and provide smaller, more isolated units that can be tested better.
+- Added custom exceptions to differentiate between different failure states of the download logic. 
+- Created a simple wrapper method to retry a code snippet if we hit certain exceptions that we deem "retryable". Depending on the severity of the error, this could mean retrying a chunk or retrying the entire download process (here only chunk downloads have the retry implemented).
+- 
+
+## Further extensions
 TODO
