@@ -2,14 +2,13 @@ package me.dariusit.downloader
 
 import io.github.oshai.kotlinlogging.KLogger
 import io.ktor.client.*
+import io.ktor.client.call.*
 import io.ktor.client.request.*
-import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.utils.io.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.io.Buffer
-import kotlinx.io.RawSink
+import kotlinx.io.asSink
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.Path
@@ -37,6 +36,10 @@ object FileChunk {
         filePath: Path,
         range: Pair<Long, Long>
     ) {
+        val file = filePath.toFile()
+        val stream = file.outputStream().asSink()
+        val bufferSize: Long = 1024 * 1024
+
         val expectedChunkSize = range.second - range.first
         httpClient.prepareGet(fileUrl) {
             headers {
@@ -47,48 +50,26 @@ object FileChunk {
                 throw ChunkWrongStatusCodeException(response.status)
             }
 
-            val channel = response.bodyAsChannel()
+            val channel: ByteReadChannel = response.body()
 
             withContext(Dispatchers.IO) {
                 FileChannel.open(filePath, StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { fileChannel ->
-                    var writePosition = range.first
+                    fileChannel.position(range.first)
 
-                    val stream = object : RawSink {
-                        override fun write(source: Buffer, byteCount: Long) {
-                            val temp = ByteArray(DEFAULT_BUFFER_SIZE)
-                            var remaining = byteCount
+                    var totalWritten = 0L
+                    val buffer = ByteBuffer.allocateDirect(1024 * 64) // 64KB buffer
 
-                            while (remaining > 0) {
-                                val toRead = minOf(temp.size.toLong(), remaining).toInt()
-                                val bytesRead = source.readAtMostTo(temp, 0, toRead)
-                                if (bytesRead <= 0) break
+                    while (!channel.isClosedForRead) {
+                        buffer.clear()
+                        val read = channel.readAvailable(buffer)
+                        if (read == -1) break
 
-                                var offset = 0
-                                while (offset < bytesRead) {
-                                    val written =
-                                        fileChannel.write(
-                                            ByteBuffer.wrap(temp, offset, bytesRead - offset),
-                                            writePosition
-                                        )
-                                    offset += written
-                                    writePosition += written.toLong()
-                                }
-
-                                remaining -= bytesRead.toLong()
-                            }
+                        buffer.flip()
+                        while (buffer.hasRemaining()) {
+                            totalWritten += fileChannel.write(buffer)
                         }
-
-                        override fun flush() = Unit
-                        override fun close() = Unit
                     }
-
-                    val downloadedSize = channel.readTo(stream, expectedChunkSize)
-
-                    if (downloadedSize != expectedChunkSize) {
-                        throw ChunkSizeMismatchException(downloadedSize, expectedChunkSize, range)
-                    }
-
-                    logger.debug { "Downloaded chunk ${range.first}-${range.second} with size $downloadedSize" }
+                    logger.debug { "Finished chunk: $totalWritten bytes written." }
                 }
             }
         }
