@@ -10,7 +10,7 @@ discussed in the last interview.
 in [the README_old.md](docs/README_old.md).)
 
 General logic of the downloader:
-![download process overview](docs/download_process_overview.svg)
+![download process overview](docs/download_process_overview_updated.png)
 
 ## How to use
 
