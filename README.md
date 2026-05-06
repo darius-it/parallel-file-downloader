@@ -57,7 +57,7 @@ val customDownloader = Downloader(
 ## Further potential extensions
 
 - Instead of requiring particular instances of a Ktor HTTP Client or a KotlinLogging logger object, add some general interfaces for the required methods to allow using different libraries for our downloader dependencies. (This could theoretically be circumvented by writing adapters for those libraries, but a more general approach would be even nicer.)
-- With the new implementation (smaller, more isolated methods) it possible to further extend the test coverage.
-- Some benchmarking could be done to see if there's any speed bottlenecks. Aspects like memory usage could also be inspected, depending on what our requirements are.
-- In a production setting (especially in something like a Compose app), it would most likely make more sense to use Koin for Dependency Injection because it provides good abstractions for DI that integrate well with other libraries (e.g. Android ViewModels).
-- Implement retry logic for network-related issues using Ktor's retry logic and potentially catch more severe failures to optionally retry the entire download process once.
+- With the new implementation (smaller, more isolated methods) it's possible to further extend the test coverage.
+- Benchmarking can be done to evaluate if there's any speed bottlenecks. Aspects like memory usage can also be inspected, depending on the given requirements.
+- In a production setting (for example a Compose app), it would make more sense to use Koin for Dependency Injection. It provides good pre-made abstractions for DI that integrate well with other libraries (e.g. Android ViewModels).
+- Implement retry logic for network-related issues using Ktor's retry mechanism to cover edge case scenarios such as the server not responding.
