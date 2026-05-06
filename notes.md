@@ -1,10 +1,4 @@
 TODOs:
-
-
-- ~~write files directly to disk~~
-- ~~try to further improve streaming logic for very big files (used prepareGet and other ideas from ktor docs in
-  combination with intitial FileChanel approach)~~
-
 - add function to match checksum file with final content if it exists, add test
 
 Technical notes:
@@ -24,13 +18,3 @@ Improvements:
 
 - Even with manual DI, our tests are much nicer since we don't need to replace the instance variable of the client but
   can rather initialize our Downloader with a different HttpClient dependency
-
-Further improvements/changes that could be done:
-
-- In prod, use Koin for DI since it's still fairly simple and handles many common cases nicely, also plays well with
-  Compose apps
-- For DI, instead of requiring specifically a Koin HTTP client, introduce some more general interface with a set of
-  required methods, we could technically use other clients and write an adapter etc.
-- Instead of fully going for saving chunks directly to disk, some in-memory fallback could be added for smaller files;
-  maybe some memory-mapped usage of the FileChannel
-- Retry some network failures via Ktor client
