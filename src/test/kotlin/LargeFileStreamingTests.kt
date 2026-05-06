@@ -1,8 +1,8 @@
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.Assertions.*
-import org.junit.jupiter.api.Disabled
+import io.ktor.client.*
 import kotlinx.coroutines.runBlocking
-import io.ktor.client.HttpClient
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
 import java.nio.file.Files
 
 /**
@@ -10,9 +10,8 @@ import java.nio.file.Files
  * significant disk space and runtime. Run manually when you want to validate streaming behavior.
  */
 class LargeFileStreamingTests {
-    @Disabled("Manual integration test for large file streaming")
     @Test
-    fun testLargeFileStreamingDoesNotAllocateHugeByteArray() {
+    fun downloadLargeFile() {
         // Use Int.MAX_VALUE (~2.147GB) to represent a file around the 2GB boundary
         val largeSize = Int.MAX_VALUE.toLong()
         val mockEngine = WebServerMock.getLargeMockEngine(largeSize)

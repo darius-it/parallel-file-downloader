@@ -1,11 +1,10 @@
-import io.ktor.client.engine.mock.MockEngine
-import io.ktor.client.engine.mock.respond
-import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpMethod
-import io.ktor.http.HttpStatusCode
-import io.ktor.http.headersOf
+import io.ktor.client.engine.mock.*
+import io.ktor.http.*
+import io.ktor.utils.io.*
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
-import kotlin.text.removePrefix
+import kotlinx.coroutines.launch
+import kotlin.math.min
 
 object WebServerMock {
     fun getMockEngine(testFileSize: Long, testFileData: ByteArray): MockEngine {
@@ -122,46 +121,74 @@ object WebServerMock {
      */
     fun getLargeMockEngine(totalSize: Long): MockEngine {
         return MockEngine { request ->
+            // Handle HEAD requests
             if (request.method == HttpMethod.Head) {
                 return@MockEngine respond(
-                    content = ByteArray(0),
+                    content = ByteReadChannel.Empty,
                     status = HttpStatusCode.OK,
                     headers = headersOf(
                         HttpHeaders.ContentLength to listOf(totalSize.toString()),
-                        HttpHeaders.AcceptRanges to listOf("bytes")
+                        HttpHeaders.AcceptRanges to listOf("bytes"),
+                        HttpHeaders.ContentType to listOf("application/octet-stream")
                     )
                 )
             }
 
+            // Parse Range
             val rangeHeader = request.headers[HttpHeaders.Range]
-            if (rangeHeader != null) {
+            val (start, end) = if (rangeHeader != null) {
                 val range = rangeHeader.removePrefix("bytes=").split("-")
-                val start = range[0].toLong()
-                val end = if (range.size > 1 && range[1].isNotEmpty()) range[1].toLong() else totalSize - 1
-
-                if (start >= totalSize || end >= totalSize || start > end) {
-                    respond("Range Not Satisfiable", status = HttpStatusCode.RequestedRangeNotSatisfiable)
-                } else {
-                    val sizeLong = end - start + 1
-                    if (sizeLong > Int.MAX_VALUE.toLong()) {
-                        respond("Requested Range Too Large", status = HttpStatusCode.RequestedRangeNotSatisfiable)
-                    } else {
-                        val size = sizeLong.toInt()
-                        val chunk = ByteArray(size) { idx -> ((start + idx) % 256).toByte() }
-                        respond(
-                            content = chunk,
-                            status = HttpStatusCode.PartialContent,
-                            headers = headersOf(
-                                HttpHeaders.ContentLength to listOf(chunk.size.toString()),
-                                HttpHeaders.ContentRange to listOf("bytes $start-$end/$totalSize")
-                            )
-                        )
-                    }
-                }
+                val s = range[0].toLong()
+                val e = if (range.size > 1 && range[1].isNotEmpty()) range[1].toLong() else totalSize - 1
+                s to e
             } else {
-                // Full download - generate small sample rather than entire huge file
-                respond(ByteArray(0), HttpStatusCode.OK)
+                0L to totalSize - 1
             }
+
+            if (start >= totalSize || end >= totalSize || start > end) {
+                return@MockEngine respond("Range Not Satisfiable", status = HttpStatusCode.RequestedRangeNotSatisfiable)
+            }
+
+            val rangeLength = end - start + 1
+
+            // 1. Create a channel manually
+            val channel = ByteChannel(autoFlush = true)
+
+            // 2. Launch a background task to "feed" the channel
+            // We use GlobalScope here because this is a Mock;
+            // the channel will close when the download finishes.
+            GlobalScope.launch {
+                try {
+                    val bufferSize = 8192
+                    val buffer = ByteArray(bufferSize)
+                    var currentPos = start
+
+                    while (currentPos <= end) {
+                        val remainingInRange = end - currentPos + 1
+                        val bytesToFill = min(bufferSize.toLong(), remainingInRange).toInt()
+
+                        for (i in 0 until bytesToFill) {
+                            buffer[i] = ((currentPos + i) % 256).toByte()
+                        }
+
+                        channel.writeFully(buffer, 0, bytesToFill)
+                        currentPos += bytesToFill
+                    }
+                } finally {
+                    // IMPORTANT: Always close the channel or the client will hang forever
+                    channel.close()
+                }
+            }
+
+            respond(
+                content = channel, // The client reads from the channel we are filling
+                status = if (rangeHeader != null) HttpStatusCode.PartialContent else HttpStatusCode.OK,
+                headers = headersOf(
+                    HttpHeaders.ContentLength to listOf(rangeLength.toString()),
+                    HttpHeaders.ContentRange to listOf("bytes $start-$end/$totalSize"),
+                    HttpHeaders.ContentType to listOf("application/octet-stream")
+                )
+            )
         }
     }
 }
