@@ -19,7 +19,7 @@ dependencies {
     testImplementation("io.ktor:ktor-client-mock:${ktor_version}")
     implementation("org.slf4j:slf4j-simple:2.0.3")
     implementation("io.github.oshai:kotlin-logging-jvm:7.0.3")
-
+    implementation("org.junit.platform:junit-platform-suite:1.9.1")
 }
 
 tasks.test {
