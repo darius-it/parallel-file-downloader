@@ -1,13 +1,11 @@
 package me.dariusit.downloader
 
 import io.github.oshai.kotlinlogging.KLogger
-import io.ktor.client.HttpClient
-import io.ktor.client.request.get
-import io.ktor.client.request.headers
-import io.ktor.client.statement.bodyAsChannel
-import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpStatusCode
-import io.ktor.utils.io.readTo
+import io.ktor.client.*
+import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import io.ktor.http.*
+import io.ktor.utils.io.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.io.Buffer
@@ -40,54 +38,58 @@ object FileChunk {
         range: Pair<Long, Long>
     ) {
         val expectedChunkSize = range.second - range.first
-        val response = httpClient.get(fileUrl) {
+        httpClient.prepareGet(fileUrl) {
             headers {
                 append(HttpHeaders.Range, "bytes=${range.first}-${range.second - 1}")
             }
-        }
+        }.execute { response ->
+            if (response.status != HttpStatusCode.PartialContent) {
+                throw ChunkWrongStatusCodeException(response.status)
+            }
 
-        if (response.status != HttpStatusCode.PartialContent) {
-            throw ChunkWrongStatusCodeException(response.status)
-        }
+            val channel = response.bodyAsChannel()
 
-        val channel = response.bodyAsChannel()
+            withContext(Dispatchers.IO) {
+                FileChannel.open(filePath, StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { fileChannel ->
+                    var writePosition = range.first
 
-        withContext(Dispatchers.IO) {
-            FileChannel.open(filePath, StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { fileChannel ->
-                var writePosition = range.first
+                    val stream = object : RawSink {
+                        override fun write(source: Buffer, byteCount: Long) {
+                            val temp = ByteArray(DEFAULT_BUFFER_SIZE)
+                            var remaining = byteCount
 
-                val stream = object : RawSink {
-                    override fun write(source: Buffer, byteCount: Long) {
-                        val temp = ByteArray(DEFAULT_BUFFER_SIZE)
-                        var remaining = byteCount
+                            while (remaining > 0) {
+                                val toRead = minOf(temp.size.toLong(), remaining).toInt()
+                                val bytesRead = source.readAtMostTo(temp, 0, toRead)
+                                if (bytesRead <= 0) break
 
-                        while (remaining > 0) {
-                            val toRead = minOf(temp.size.toLong(), remaining).toInt()
-                            val bytesRead = source.readAtMostTo(temp, 0, toRead)
-                            if (bytesRead <= 0) break
+                                var offset = 0
+                                while (offset < bytesRead) {
+                                    val written =
+                                        fileChannel.write(
+                                            ByteBuffer.wrap(temp, offset, bytesRead - offset),
+                                            writePosition
+                                        )
+                                    offset += written
+                                    writePosition += written.toLong()
+                                }
 
-                            var offset = 0
-                            while (offset < bytesRead) {
-                                val written = fileChannel.write(ByteBuffer.wrap(temp, offset, bytesRead - offset), writePosition)
-                                offset += written
-                                writePosition += written.toLong()
+                                remaining -= bytesRead.toLong()
                             }
-
-                            remaining -= bytesRead.toLong()
                         }
+
+                        override fun flush() = Unit
+                        override fun close() = Unit
                     }
 
-                    override fun flush() = Unit
-                    override fun close() = Unit
+                    val downloadedSize = channel.readTo(stream, expectedChunkSize)
+
+                    if (downloadedSize != expectedChunkSize) {
+                        throw ChunkSizeMismatchException(downloadedSize, expectedChunkSize, range)
+                    }
+
+                    logger.debug { "Downloaded chunk ${range.first}-${range.second} with size $downloadedSize" }
                 }
-
-                val downloadedSize = channel.readTo(stream, expectedChunkSize)
-
-                if (downloadedSize != expectedChunkSize) {
-                    throw ChunkSizeMismatchException(downloadedSize, expectedChunkSize, range)
-                }
-
-                logger.debug { "Downloaded chunk ${range.first}-${range.second} with size $downloadedSize" }
             }
         }
     }
