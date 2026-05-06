@@ -8,7 +8,6 @@ import io.ktor.http.*
 import io.ktor.utils.io.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.io.asSink
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.Path
@@ -16,6 +15,9 @@ import java.nio.file.StandardOpenOption
 
 class ChunkWrongStatusCodeException(statusCode: HttpStatusCode) :
     Exception("Failed to fetch file chunk (received unexpected HTTP status code $statusCode)!")
+
+class ChunkSizeMismatchException(downloadedSize: Long, expectedSize: Long, range: Pair<Long, Long>) :
+    Exception("Size of downloaded chunk ($downloadedSize) does not match expected chunk size ($expectedSize) for range (${range.first} - ${range.second})")
 
 object FileChunk {
     /**
@@ -36,11 +38,8 @@ object FileChunk {
         filePath: Path,
         range: Pair<Long, Long>
     ) {
-        val file = filePath.toFile()
-        val stream = file.outputStream().asSink()
-        val bufferSize: Long = 1024 * 1024
-
         val expectedChunkSize = range.second - range.first
+
         httpClient.prepareGet(fileUrl) {
             headers {
                 append(HttpHeaders.Range, "bytes=${range.first}-${range.second - 1}")
@@ -69,6 +68,11 @@ object FileChunk {
                             totalWritten += fileChannel.write(buffer)
                         }
                     }
+
+                    if (totalWritten != expectedChunkSize) {
+                        throw ChunkSizeMismatchException(totalWritten, expectedChunkSize, range)
+                    }
+
                     logger.debug { "Finished chunk: $totalWritten bytes written." }
                 }
             }

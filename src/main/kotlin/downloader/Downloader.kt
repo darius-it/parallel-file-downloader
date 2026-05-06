@@ -7,13 +7,10 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 
-class ChunkSizeMismatchException(downloadedSize: Long, expectedSize: Long, range: Pair<Long, Long>) :
-    Exception("Size of downloaded chunk ($downloadedSize) does not match expected chunk size ($expectedSize) for range (${range.first} - ${range.second})")
-
-class ChunkTooLargeException:
+class ChunkTooLargeException :
     Exception("Chunk size exceeds max size of Java (Byte)Array! Please increase the number of parallelDownloadChunks.")
 
-class Downloader (
+class Downloader(
     private val defaultServerUrl: String = "http://localhost:8080",
     private val parallelChunkAmount: Int = 2,
     private val chunkFailureRetries: Int = 3,
@@ -110,7 +107,7 @@ class Downloader (
             currentStart = currentEnd
         }
 
-        logger.debug{ "Determined chunk ranges for download: $chunkRanges" }
+        logger.debug { "Determined chunk ranges for download: $chunkRanges" }
 
         return chunkRanges
     }
@@ -179,8 +176,10 @@ class Downloader (
      */
     suspend fun tryCatchWithRetry(
         maxRetries: Int = chunkFailureRetries,
-        retryOn: Array<Class<out Exception>> = arrayOf(ChunkSizeMismatchException::class.java,
-            ChunkWrongStatusCodeException::class.java),
+        retryOn: Array<Class<out Exception>> = arrayOf(
+            ChunkSizeMismatchException::class.java,
+            ChunkWrongStatusCodeException::class.java
+        ),
         func: suspend () -> Unit
     ) {
         require(maxRetries >= 0) { "maxRetries must be >= 0" }
