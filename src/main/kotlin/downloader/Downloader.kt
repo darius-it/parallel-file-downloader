@@ -39,7 +39,7 @@ class Downloader(
 
         logger.debug { "Downloading ${chunkRanges.size} chunks in parallel..." }
         val destinationFilePath = getDestinationFilePath(fileName)
-        val downloadUrl = "$serverUrl/$fileName"
+        val downloadUrl = buildUrl(serverUrl, fileName)
         downloadInParallel(downloadUrl, destinationFilePath, chunkRanges, fileProperties.contentLength)
     }
 
@@ -65,7 +65,7 @@ class Downloader(
         require(fileName.isNotBlank()) { "File name cannot be blank!" }
         require(serverUrl.isNotBlank()) { "Server URL cannot be blank!" }
 
-        val fileUrl = "$serverUrl/$fileName"
+        val fileUrl = buildUrl(serverUrl, fileName)
         val fileProperties = FileProperties.fetchFileProperties(httpClient, fileUrl)
 
         require(fileProperties.contentLength > 0L) {
@@ -200,4 +200,10 @@ class Downloader(
             }
         }
     }
+
+    /**
+     * Small helper to build commonly used server URLs for downloads
+     */
+    private fun buildUrl(serverUrl: String, fileName: String): String =
+        "${serverUrl.trimEnd('/')}/${fileName.trimStart('/')}"
 }
